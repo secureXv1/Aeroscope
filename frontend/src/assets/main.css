@@ -1,0 +1,64 @@
+@import "tailwindcss";
+@import 'leaflet/dist/leaflet.css';
+
+/* ==== Componentes personalizados ==== */
+@layer components {
+  .btn {
+    @apply inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-medium
+           border border-slate-200 bg-white hover:bg-slate-50 transition;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-medium
+           border border-transparent text-white transition;
+    background: linear-gradient(135deg, hsl(222 84% 60%), hsl(280 80% 60%));
+    box-shadow: 0 8px 24px -12px hsl(222 84% 60% / .7);
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-3 py-2 text-sm text-slate-600
+           hover:bg-slate-100 rounded-xl;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm
+           outline-none focus:ring-2 focus:ring-slate-200;
+  }
+
+  /* Eliminamos “@apply card” y definimos las props directamente */
+  .card {
+    @apply rounded-2xl border border-slate-200/60 bg-white/80 backdrop-blur-xl
+           shadow-[0_8px_30px_rgba(0,0,0,0.06)];
+  }
+
+  .card-body {
+    @apply p-5;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-slate-200
+           bg-white/70 px-2.5 py-1 text-xs text-slate-600;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-slate-700 hover:bg-slate-100;
+  }
+
+  .sidebar-link-active {
+    @apply bg-slate-900 text-white hover:bg-slate-900;
+  }
+
+  /* KPI components */
+  .kpi {
+    @apply rounded-2xl border border-slate-200/60 bg-white/80 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.06)]
+           p-5 relative overflow-hidden;
+  }
+
+  .kpi-num {
+    @apply text-2xl font-semibold tracking-tight;
+  }
+
+  .kpi-label {
+    @apply text-sm text-slate-500;
+  }
+}

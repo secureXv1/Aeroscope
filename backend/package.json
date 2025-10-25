@@ -1,0 +1,23 @@
+{
+  "name": "aeroportal-api",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@vue-leaflet/vue-leaflet": "^0.10.1",
+    "cors": "^2.8.5",
+    "csv-parse": "^5.5.2",
+    "csv-stringify": "^6.6.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "jszip": "^3.10.1",
+    "leaflet": "^1.9.4",
+    "multer": "^1.4.5-lts.1",
+    "mysql2": "^3.11.0",
+    "xlsx": "^0.18.5",
+    "xmlbuilder2": "^4.0.0"
+  }
+}
