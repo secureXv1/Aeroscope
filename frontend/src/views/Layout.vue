@@ -68,7 +68,7 @@
 <script setup>
 import { useRoute } from 'vue-router'
 import { computed, ref } from 'vue'
-import { LayoutDashboard, Radar, FolderCog, Plane, Menu as MenuIcon } from 'lucide-vue-next'
+import { LayoutDashboard, Radar, FolderCog, Plane, Layers, Menu as MenuIcon } from 'lucide-vue-next'
 
 
 const route = useRoute()
@@ -76,12 +76,17 @@ const open = ref(false)
 const links = [
   { to: '/dashboard', name: 'Dashboard', icon: LayoutDashboard },
   { to: '/aeroscope', name: 'Aeroscope', icon: Radar },
+  { to: '/aeroscope-agrupado', name: 'Aeroscope (Agrupado)', icon: Layers },
   { to: '/ffpp', name: 'FFPP', icon: FolderCog },
   { to: '/aeronautica', name: 'Aeronautica', icon: Plane }
 ]
 
 const linkClass = (path) =>
-  computed(() => `sidebar-link ${route.path === path ? 'sidebar-link-active' : ''}`).value
+  computed(() => `sidebar-link ${
+    route.path === path || route.path.startsWith(path + '/')
+      ? 'sidebar-link-active'
+      : ''
+  }`).value
 
 const logoStyle = computed(() => ({
   background:

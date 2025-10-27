@@ -15,7 +15,8 @@ const routes = [
       { path: 'dashboard', component: Dashboard },
       { path: 'aeroscope', component: Aeroscope },
       { path: 'ffpp', component: FFPP },
-      { path: 'aeronautica', component: Aeronautica }
+      { path: 'aeronautica', component: Aeronautica },
+      { path: '/aeroscope-agrupado', component: () => import('../views/AeroscopeAgrupado.vue') }
     ]
   }
 ]

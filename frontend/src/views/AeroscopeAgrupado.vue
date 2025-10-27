@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-6">
-    <!-- KPIs Superiores (sobre el dataset filtrado) -->
+    <!-- KPIs Superiores (agrupado) -->
     <div class="grid md:grid-cols-4 gap-5">
       <section class="kpi">
         <div class="kpi-label">Total Registros</div>
@@ -31,8 +31,6 @@
           <label class="text-xs text-slate-600">Fecha fin</label>
           <input type="date" v-model="dateEnd" class="input mt-1" />
         </div>
-
-        <!-- Drone ID: escribible + sugerencias -->
         <div>
           <label class="text-xs text-slate-600">Drone ID</label>
           <select v-model="droneId" class="input mt-1 min-w-[160px]">
@@ -40,49 +38,49 @@
             <option v-for="id in droneIds" :key="id" :value="id">{{ id }}</option>
           </select>
         </div>
-
         <div>
           <label class="text-xs text-slate-600">Aeroscope ID</label>
-          <select v-model="aeroscopeId" class="input mt-1 min-w-[180px]">
+          <select v-model="aeroscopeId" class="input mt-1 min-w-[160px]">
             <option value="">Todos</option>
             <option v-for="id in aeroscopeIds" :key="id" :value="id">{{ id }}</option>
           </select>
         </div>
 
-        <!-- Filtro por tipo -->
+        <!-- Filtro por tipo (como en Aeroscope: ffpp / aeronautica / hostil) -->
         <div class="flex gap-2">
-          <button class="btn btn-ghost" :class="tipo === '' ? 'ring-1 ring-slate-300' : ''" @click="tipo = ''">Todos</button>
-          <button class="btn btn-ghost text-green-600" :class="tipo === 'ffpp' ? 'ring-1 ring-green-300' : ''" @click="tipo = 'ffpp'">FFPP</button>
-          <button class="btn btn-ghost text-blue-600" :class="tipo === 'aeronautica' ? 'ring-1 ring-blue-300' : ''" @click="tipo = 'aeronautica'">Aeronáutica</button>
-          <button class="btn btn-ghost text-red-600" :class="tipo === 'hostil' ? 'ring-1 ring-red-300' : ''" @click="tipo = 'hostil'">Otros</button>
+          <button
+            class="btn btn-ghost"
+            :class="tipo === '' ? 'ring-1 ring-slate-300' : ''"
+            @click="tipo = ''"
+          >Todos</button>
+          <button
+            class="btn btn-ghost text-green-600"
+            :class="tipo === 'ffpp' ? 'ring-1 ring-green-300' : ''"
+            @click="tipo = 'ffpp'"
+          >FFPP</button>
+          <button
+            class="btn btn-ghost text-blue-600"
+            :class="tipo === 'aeronautica' ? 'ring-1 ring-blue-300' : ''"
+            @click="tipo = 'aeronautica'"
+          >Aeronáutica</button>
+          <button
+            class="btn btn-ghost text-red-600"
+            :class="tipo === 'hostil' ? 'ring-1 ring-red-300' : ''"
+            @click="tipo = 'hostil'"
+          >Otros</button>
         </div>
 
         <button class="btn" v-if="hayFiltros" @click="resetFiltros">Limpiar</button>
+        <button class="btn" @click="descargarCsvAgrupado" :disabled="descargandoAgrupado">
+          {{ descargandoAgrupado ? 'Descargando…' : 'Descargar CSV Agrupado' }}
+        </button>
       </div>
-      
-      <div class="ml-auto flex gap-2" style="margin-top: 15px;">
-          <button class="btn" @click="descargarCsv" :disabled="downCsv">
-            {{ downCsv ? 'Descargando…' : 'Descargar CSV' }}
-          </button>
-          <button class="btn" @click="descargarKmz" :disabled="downKmz">
-            {{ downKmz ? 'Descargando…' : 'Descargar KMZ' }}
-          </button>
-          <label class="btn cursor-pointer">
-            <input
-              type="file"
-              accept=".csv"
-              class="hidden"
-              @change="onCsvUpload"
-            />
-            {{ uploading ? 'Subiendo…' : 'Subir CSV' }}
-          </label>
-        </div>
     </div>
 
-    <!-- Tabla -->
+    <!-- Tabla Agrupado -->
     <div class="card p-4">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="font-semibold">Resultados</h3>
+        <h3 class="font-semibold">Resultados (Agrupado)</h3>
 
         <!-- Paginación -->
         <div class="flex items-center gap-2 text-xs">
@@ -101,7 +99,8 @@
         <table class="w-full text-xs border-collapse">
           <thead>
             <tr class="bg-slate-100 text-slate-700">
-              <th class="text-left p-2 border">Fecha</th>
+              <th class="text-left p-2 border">Inicio</th>
+              <th class="text-left p-2 border">Fin</th>
               <th class="text-left p-2 border">Aeroscope</th>
               <th class="text-left p-2 border">Drone ID</th>
               <th class="text-left p-2 border">Tipo</th>
@@ -111,7 +110,8 @@
           </thead>
           <tbody>
             <tr v-for="(r, i) in pageRows" :key="i" class="odd:bg-white even:bg-slate-50">
-              <td class="p-2 border whitespace-nowrap">{{ r.created_at_fmt }}</td>
+              <td class="p-2 border whitespace-nowrap">{{ r.time_start_fmt }}</td>
+              <td class="p-2 border whitespace-nowrap">{{ r.time_end_fmt }}</td>
               <td class="p-2 border">{{ r.aeroscope_id || '-' }}</td>
               <td class="p-2 border">{{ r.drone_id || '-' }}</td>
               <td class="p-2 border capitalize">
@@ -130,7 +130,7 @@
             </tr>
 
             <tr v-if="!pageRows.length">
-              <td colspan="6" class="p-4 text-center text-slate-400">
+              <td colspan="7" class="p-4 text-center text-slate-400">
                 Sin datos para los filtros actuales.
               </td>
             </tr>
@@ -146,71 +146,72 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { http } from '../lib/http'
 
-// === Estado de filtros (armado igual que en la versión Agrupada) ===
+// === Estado de filtros ===
 const dateStart = ref('')
 const dateEnd = ref('')
-const droneId = ref('')       // input de texto con datalist
+const droneId = ref('')
 const aeroscopeId = ref('')
-const tipo = ref('')          // '', 'ffpp', 'aeronautica', 'hostil'
+const tipo = ref('') // '', 'ffpp', 'aeronautica', 'hostil'
 
-// === Listas para selects (distincts) ===
+// === Listas para selects (tomadas de /aeroscope/distincts) ===
 const droneIds = ref([])
 const aeroscopeIds = ref([])
 
-// === KPIs calculados sobre el dataset filtrado ===
+// === KPIs (agrupado) ===
 const kpi = reactive({ total: 0, ffpp: 0, aeronautica: 0, hostil: 0 })
 
-// === Datos de tabla ===
+// === Datos de tabla (agrupado) ===
 const rows = ref([])
 
-// === Export flags ===
-const downCsv = ref(false)
-const downKmz = ref(false)
-
-// Distincts de Aeroscope
+// === Cargar distincts de la vista base (para selects) ===
 async function cargarDistincts() {
   const { data } = await http.get('/aeroscope/distincts')
   droneIds.value = data?.drone_ids || []
   aeroscopeIds.value = data?.aeroscope_ids || []
 }
 
-// Consulta (map) con filtros
+// === Cargar KPIs agrupados (admite filtros por fecha) ===
+async function loadKpiAgrupado() {
+  const params = {}
+  if (dateStart.value) params.start = dateStart.value
+  if (dateEnd.value) params.end = dateEnd.value
+  const { data } = await http.get('/aeroscope_agrupado/kpi', { params })
+  kpi.total = Number(data?.total || 0)
+  kpi.ffpp = Number(data?.ffpp || 0)
+  kpi.aeronautica = Number(data?.aeronautica || 0)
+  kpi.hostil = Number(data?.hostil || 0)
+}
+
+// === Consultar tabla agrupada (misma firma de filtros, con 'tipo' en cliente) ===
 async function aplicarFiltros() {
   const params = {}
   if (dateStart.value) params.start = dateStart.value
   if (dateEnd.value) params.end = dateEnd.value
   if (droneId.value) params.drone_id = droneId.value
   if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
-  // Si tu API soporta filtrar por tipo, envíalo:
-  // if (tipo.value) params.tipo = tipo.value
 
-  const { data } = await http.get('/aeroscope/map', { params })
-  let arr = Array.isArray(data) ? data : []
+  const { data } = await http.get('/aeroscope_agrupado/map', { params })
+  const arr = Array.isArray(data) ? data : []
 
-  // filtro por tipo en cliente (garantiza funcionamiento aunque el backend no acepte tipo)
-  if (tipo.value) {
-    const t = tipo.value
-    arr = arr.filter(r => String(r?.tipo || '').toLowerCase() === t)
-  }
+  // filtro de tipo en cliente si está definido
+  const filtered = tipo.value
+    ? arr.filter(r => String(r?.tipo || '').toLowerCase() === tipo.value)
+    : arr
 
-  rows.value = arr
+  rows.value = filtered
     .filter(r =>
       r.longitude !== null && r.latitude !== null &&
       !Number.isNaN(Number(r.longitude)) && !Number.isNaN(Number(r.latitude))
     )
     .map(r => ({
       ...r,
-      created_at_fmt: fmtDT(r.created_at || r.time || r.time_start || r.timestamp)
+      time_start_fmt: fmtDT(r.time_start || r.start_time || r.start || r.fecha_inicio),
+      time_end_fmt: fmtDT(r.time_end || r.end_time || r.end || r.fecha_fin)
     }))
-    .sort((a, b) => (b.created_at_fmt > a.created_at_fmt ? 1 : -1))
-
-  // KPIs sobre el dataset filtrado
-  kpi.total = rows.value.length
-  kpi.ffpp = rows.value.filter(r => r.tipo === 'ffpp').length
-  kpi.aeronautica = rows.value.filter(r => r.tipo === 'aeronautica').length
-  kpi.hostil = rows.value.filter(r => r.tipo === 'hostil').length
+    .sort((a, b) => (b.time_start_fmt > a.time_start_fmt ? 1 : -1))
 }
 
+// === Utils ===
 function fmtDT(v) {
   const s = String(v || '')
   return s.replace('T', ' ').slice(0, 19) || '-'
@@ -227,59 +228,34 @@ function resetFiltros() {
   aeroscopeId.value = ''
   tipo.value = ''
   rows.value = []
-  kpi.total = 0; kpi.ffpp = 0; kpi.aeronautica = 0; kpi.hostil = 0
+  loadKpiAgrupado()
 }
+const descargandoAgrupado = ref(false)
 
-// Exportaciones con filtros actuales
-async function descargarCsv() {
-  downCsv.value = true
+async function descargarCsvAgrupado() {
+  descargandoAgrupado.value = true
   try {
-    const qs = new URLSearchParams()
-    if (dateStart.value) qs.set('start', dateStart.value)
-    if (dateEnd.value) qs.set('end', dateEnd.value)
-    if (droneId.value) qs.set('drone_id', droneId.value)
-    if (aeroscopeId.value) qs.set('aeroscope_id', aeroscopeId.value)
-    if (tipo.value) qs.set('tipo', tipo.value)
+    const params = {}
+    if (dateStart.value) params.start = dateStart.value
+    if (dateEnd.value) params.end = dateEnd.value
+    if (droneId.value) params.drone_id = droneId.value
+    if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
 
-    const resp = await fetch(`/api/aeroscope/export-csv?${qs.toString()}`)
-    if (!resp.ok) throw new Error('Error al exportar CSV')
+    const qs = new URLSearchParams(params).toString()
+    const resp = await fetch(`/api/aeroscope_agrupado/export-csv?${qs}`)
     const blob = await resp.blob()
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'aeroscope_export.csv'
+    a.download = 'aeroscope_agrupado_export.csv'
     a.click()
     window.URL.revokeObjectURL(url)
   } finally {
-    downCsv.value = false
+    descargandoAgrupado.value = false
   }
 }
 
-async function descargarKmz() {
-  downKmz.value = true
-  try {
-    const qs = new URLSearchParams()
-    if (dateStart.value) qs.set('start', dateStart.value)
-    if (dateEnd.value) qs.set('end', dateEnd.value)
-    if (droneId.value) qs.set('drone_id', droneId.value)
-    if (aeroscopeId.value) qs.set('aeroscope_id', aeroscopeId.value)
-    if (tipo.value) qs.set('tipo', tipo.value)
-
-    const resp = await fetch(`/api/aeroscope/export-kmz?${qs.toString()}`)
-    if (!resp.ok) throw new Error('Error al exportar KMZ')
-    const blob = await resp.blob()
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'aeroscope_export.kmz'
-    a.click()
-    window.URL.revokeObjectURL(url)
-  } finally {
-    downKmz.value = false
-  }
-}
-
-// Paginación
+// === Paginación ===
 const page = ref(1)
 const pageSize = ref(20)
 const totalPages = computed(() => Math.max(1, Math.ceil(rows.value.length / pageSize.value)))
@@ -289,12 +265,16 @@ const pageRows = computed(() => {
 })
 watch([rows, pageSize], () => { page.value = 1 })
 
-// Lifecycle
+// === Lifecycle ===
 onMounted(async () => {
   await cargarDistincts()
+  await loadKpiAgrupado()
   await aplicarFiltros()
 })
+
+// Reaplicar al cambiar filtros
 watch([dateStart, dateEnd, droneId, aeroscopeId, tipo], () => {
   aplicarFiltros()
+  loadKpiAgrupado()
 })
 </script>

@@ -11,6 +11,9 @@ import { Router } from 'express';
 import { exec } from 'child_process';
 import fs from 'fs';
 
+import aeroscopeAgrupadoRoutes from './routes/aeroscope_agrupado.js';
+
+
 const router = Router();
 
 router.get('/export-db', async (req, res) => {
@@ -55,6 +58,7 @@ app.use('/api/aeroscope', aeroscopeRoutes);
 app.use('/api/ffpp', ffppRoutes);
 app.use('/api/aeronautica', aeronauticaRoutes);
 app.use('/api/export', router);
+app.use('/api/aeroscope_agrupado', aeroscopeAgrupadoRoutes);
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {

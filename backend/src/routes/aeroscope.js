@@ -363,6 +363,61 @@ router.post('/upload-csv', upload.single('file'), async (req, res) => {
       );
     }
 
+    // 🚨 Actualiza tabla agrupada (borra y vuelve a llenar agrupados)
+    if (inserted.length) {
+      // Borra todos los agrupados
+      await pool.query('TRUNCATE TABLE aeroscope_agrupado');
+      
+      // Agrupa (los SET deben ir por separado en node-mysql)
+      await pool.query('SET @last_drone := NULL');
+      await pool.query('SET @last_time := NULL');
+      await pool.query('SET @group_num := 0');
+      // Crea tabla temporal
+      await pool.query(`
+        CREATE TEMPORARY TABLE temp_agrupados AS
+          SELECT 
+            id, flight_id, drone_id, drone_type, aeroscope_id, 
+            duration_sec, max_alt_m, longitude, latitude,
+            time_start, time_end, tipo,
+            (
+              CASE
+                WHEN @last_drone = drone_id AND TIMESTAMPDIFF(MINUTE, @last_time, time_start) <= 20
+                  THEN @group_num
+                ELSE @group_num := @group_num + 1
+              END
+            ) AS group_id,
+            @last_drone := drone_id,
+            @last_time := time_start
+          FROM (SELECT * FROM aeroscope ORDER BY drone_id, time_start) AS t
+      `);
+
+      // Inserta en agrupado (toma datos del primer vuelo, excepto end)
+      await pool.query(`
+        INSERT INTO aeroscope_agrupado (
+          flight_id, drone_id, drone_type, aeroscope_id,
+          duration_sec, max_alt_m, longitude, latitude,
+          time_start, time_end, tipo
+        )
+        SELECT
+          MIN(flight_id) AS flight_id,
+          drone_id,
+          MIN(drone_type) AS drone_type,
+          MIN(aeroscope_id) AS aeroscope_id,
+          MIN(duration_sec) AS duration_sec,
+          MIN(max_alt_m) AS max_alt_m,
+          MIN(longitude) AS longitude,
+          MIN(latitude) AS latitude,
+          MIN(time_start) AS time_start,
+          MAX(time_end) AS time_end,
+          MIN(tipo) AS tipo
+        FROM temp_agrupados
+        GROUP BY drone_id, group_id
+      `);
+      // Limpia temporal
+      await pool.query('DROP TEMPORARY TABLE IF EXISTS temp_agrupados');
+    }
+
+
     res.json({ ok: true, inserted: inserted.length, omitidas: errors.length, errors });
   } catch (e) {
     await trx.rollback();
