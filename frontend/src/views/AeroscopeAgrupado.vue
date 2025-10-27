@@ -71,16 +71,12 @@
         </div>
 
         <button class="btn" v-if="hayFiltros" @click="resetFiltros">Limpiar</button>
-        <button class="btn" @click="descargarCsvAgrupado" :disabled="descargandoAgrupado">
+        <button class="btn btn-primary" @click="descargarCsvAgrupado" :disabled="descargandoAgrupado">
           {{ descargandoAgrupado ? 'Descargando…' : 'Descargar CSV Agrupado' }}
         </button>
-        <button
-          class="btn btn-primary"
-          @click="downloadKmz"
-        >
+        <button class="btn btn-primary" @click="downloadKmz">
           Descargar KMZ
         </button>
-
       </div>
     </div>
 
@@ -224,19 +220,23 @@ function fmtDT(v) {
   return s.replace('T', ' ').slice(0, 19) || '-'
 }
 
-function buildQuery(params) {
-  const q = new URLSearchParams();
-  if (filters.start) q.set('start', filters.start);
-  if (filters.end) q.set('end', filters.end);
-  if (filters.drone_id) q.set('drone_id', filters.drone_id);
-  if (filters.aeroscope_id) q.set('aeroscope_id', filters.aeroscope_id);
-  return q.toString();
-}
+async function downloadKmz() {
+  const params = {}
+  if (dateStart.value) params.start = dateStart.value
+  if (dateEnd.value) params.end = dateEnd.value
+  if (droneId.value) params.drone_id = droneId.value
+  if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
 
-function downloadKmz() {
-  const q = buildQuery(filters);
-  const url = `/api/aeroscope-agrupado/export-kmz${q ? `?${q}` : ''}`;
-  window.open(url, '_blank');
+  const qs = new URLSearchParams(params).toString()
+  const base = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
+  const resp = await fetch(`${base}/aeroscope_agrupado/export-kmz?${qs}`)
+  const blob = await resp.blob()
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'aeroscope_agrupado.kmz'
+  a.click()
+  window.URL.revokeObjectURL(url)
 }
 
 const hayFiltros = computed(() =>

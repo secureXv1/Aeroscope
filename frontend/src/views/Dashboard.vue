@@ -59,13 +59,13 @@
         </select>
       </div>
       <button class="btn mt-2" @click="resetFiltros" v-if="dateStart || dateEnd || droneId || aeroscopeId">Limpiar</button>
-      <!-- Botones de descarga -->
+      <!-- Botones de descarga 
       <button class="btn" @click="descargarCsv" :disabled="descargando">
         {{ descargando ? 'Descargando…' : 'Descargar CSV' }}
       </button>
       <button class="btn" @click="descargarKmz" :disabled="descargandoKmz">
         {{ descargandoKmz ? 'Descargando…' : 'Descargar KMZ' }}
-      </button>
+      </button>-->
     </div>
   </div>
 
