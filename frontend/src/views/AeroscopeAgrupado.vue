@@ -74,6 +74,13 @@
         <button class="btn" @click="descargarCsvAgrupado" :disabled="descargandoAgrupado">
           {{ descargandoAgrupado ? 'Descargando…' : 'Descargar CSV Agrupado' }}
         </button>
+        <button
+          class="btn btn-primary"
+          @click="downloadKmz"
+        >
+          Descargar KMZ
+        </button>
+
       </div>
     </div>
 
@@ -215,6 +222,21 @@ async function aplicarFiltros() {
 function fmtDT(v) {
   const s = String(v || '')
   return s.replace('T', ' ').slice(0, 19) || '-'
+}
+
+function buildQuery(params) {
+  const q = new URLSearchParams();
+  if (filters.start) q.set('start', filters.start);
+  if (filters.end) q.set('end', filters.end);
+  if (filters.drone_id) q.set('drone_id', filters.drone_id);
+  if (filters.aeroscope_id) q.set('aeroscope_id', filters.aeroscope_id);
+  return q.toString();
+}
+
+function downloadKmz() {
+  const q = buildQuery(filters);
+  const url = `/api/aeroscope-agrupado/export-kmz${q ? `?${q}` : ''}`;
+  window.open(url, '_blank');
 }
 
 const hayFiltros = computed(() =>

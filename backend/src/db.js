@@ -7,5 +7,5 @@ export const pool = await mysql.createPool({
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
-  timezone: 'Z' // guarda DATETIME en UTC; maneja TZ en front
+  timezone: '-05:00',
 });
