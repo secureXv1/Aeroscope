@@ -8,30 +8,24 @@
         </div>
         <button class="btn" @click="fetchData(1)">Buscar</button>
         <button class="btn-primary ml-auto" @click="showForm()">Agregar nuevo</button>
-        <!-- Carga de CSV -->
-        <div class="flex-1 md:max-w-xs">
-          <label class="text-sm text-slate-600">Subir CSV</label>
-          <div
-            class="mt-1 rounded-2xl border-2 border-dashed border-slate-300 bg-white/70 p-2 text-center cursor-pointer hover:bg-slate-50"
-            @click="fileEl?.click()"
-            @dragover.prevent
-            @drop.prevent="onDrop"
-          >
-            <input ref="fileEl" type="file" class="hidden" accept=".csv" @change="onFile" />
-            <p class="text-xs text-slate-500">
-              Arrastra aquí o <span class="underline">haz clic</span>
-            </p>
-            <p v-if="file" class="mt-1 text-xs text-slate-500">Seleccionado: {{ file?.name }}</p>
-            <button class="btn-primary mt-2" :disabled="!file || uploading" @click="uploadCsv">
-              {{ uploading ? 'Cargando…' : 'Procesar CSV' }}
-            </button>
-          </div>
-          <!-- Estado de carga -->
-          <div v-if="csvResult" class="mt-2 text-xs">
+        <!-- Carga de CSV (solo botón estilo Aeroscope/Aeronáutica) -->
+        <div class="flex items-center gap-2">
+          <label class="btn-primary">
+            <input
+              type="file"
+              ref="csvInput"
+              class="hidden"
+              accept=".csv"
+              @change="onPickCsv"
+            />
+            {{ uploading ? `Subiendo… ${uploadPct}%` : 'Subir CSV' }}
+          </label>
+
+          <div v-if="csvResult" class="text-xs space-x-2">
             <span class="chip bg-green-100 text-green-700">Insertados: {{ csvResult.inserted ?? 0 }}</span>
+            <span class="chip bg-blue-100 text-blue-700">Actualizados: {{ csvResult.updated ?? 0 }}</span>
             <span class="chip bg-red-100 text-red-700">Omitidos: {{ csvResult.omitidas ?? 0 }}</span>
             <span class="chip bg-yellow-100 text-yellow-700">Errores: {{ csvResult.errors?.length || 0 }}</span>
-            <span v-if="csvResult.ok" class="ml-2 text-green-600 font-semibold">✔ ¡Carga exitosa!</span>
           </div>
         </div>
       </div>
@@ -135,13 +129,12 @@ const page = ref(1)
 const pageSize = ref(12)
 const q = ref('')
 
-// CSV state
-const fileEl = ref(null)
-const file = ref(null)
-const uploading = ref(false)
-const csvResult = ref(null)
+// === CSV (solo botón) ===
+const csvInput = ref(null)   // <input hidden>
+const uploading = ref(false) // estado de subida
+const uploadPct = ref(0)     // porcentaje
+const csvResult = ref(null)  // { ok, inserted, updated, omitidas, errors }
 
-// Modal/form state
 const showModal = ref(false)
 const isEdit = ref(false)
 const form = ref({
@@ -157,7 +150,7 @@ const fetchData = async (p = 1) => {
   total.value = data.total ?? items.value.length
 }
 
-function showForm(edit = false) {
+function showForm (edit = false) {
   isEdit.value = !!edit
   if (edit && typeof edit === 'object') {
     form.value = { ...edit }
@@ -168,11 +161,13 @@ function showForm(edit = false) {
 }
 
 const edit = (row) => showForm(row)
+
 const del = async (id) => {
   if (!confirm('¿Eliminar registro?')) return
   await http.delete(`/ffpp/${id}`)
   await fetchData(page.value)
 }
+
 const submitForm = async () => {
   if (isEdit.value && form.value.id) {
     await http.put(`/ffpp/${form.value.id}`, form.value)
@@ -183,26 +178,46 @@ const submitForm = async () => {
   await fetchData(page.value)
 }
 
-// ---- CSV logic
-const onFile = (e) => (file.value = e.target.files?.[0] || null)
-const onDrop = (e) => (file.value = e.dataTransfer?.files?.[0] || null)
+// === Handlers CSV ===
+function onPickCsv (e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  uploadCsv(file)
+}
 
-const uploadCsv = async () => {
-  if (!file.value) return
+async function uploadCsv (file) {
   const fd = new FormData()
-  fd.append('file', file.value)
+  fd.append('file', file)
+
   uploading.value = true
+  uploadPct.value = 0
+  csvResult.value = null
+
   try {
     const { data } = await http.post('/ffpp/upload-csv', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      onUploadProgress: (p) => {
+        if (p.total) uploadPct.value = Math.round((p.loaded * 100) / p.total)
+      }
     })
-    csvResult.value = data
+
+    csvResult.value = {
+      ok: !!data?.ok,
+      inserted: data?.inserted ?? 0,
+      updated: data?.updated ?? 0,
+      omitidas: data?.omitidas ?? 0,
+      errors: data?.errors || []
+    }
+
     await fetchData(1)
+  } catch (err) {
+    alert(err?.response?.data?.error || err?.message || 'Error al subir CSV')
   } finally {
     uploading.value = false
-    file.value = null
-    if (fileEl.value) fileEl.value.value = null // LIMPIA el input real
+    uploadPct.value = 0
+    if (csvInput.value) csvInput.value.value = '' // limpiar input
   }
 }
+
 onMounted(() => fetchData(1))
 </script>
+

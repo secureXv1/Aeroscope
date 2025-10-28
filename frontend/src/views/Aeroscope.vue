@@ -61,20 +61,14 @@
       </div>
       
       <div class="ml-auto flex gap-2" style="margin-top: 15px;">
-          <button class="btn" @click="descargarCsv" :disabled="downCsv">
-            {{ downCsv ? 'Descargando…' : 'Descargar CSV' }}
-          </button>
-          <button class="btn" @click="descargarKmz" :disabled="downKmz">
-            {{ downKmz ? 'Descargando…' : 'Descargar KMZ' }}
-          </button>
-          <label class="btn cursor-pointer">
+          <label class="btn btn-primary">
             <input
               type="file"
-              accept=".csv"
+              accept=".csv,text/csv"
               class="hidden"
               @change="onCsvUpload"
             />
-            {{ uploading ? 'Subiendo…' : 'Subir CSV' }}
+            {{ uploading ? `Subiendo… ${uploadPct}%` : 'Subir CSV' }}
           </label>
         </div>
     </div>
@@ -145,6 +139,64 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { http } from '../lib/http'
+
+// === Subida de CSV ===
+const uploading = ref(false)
+const uploadPct = ref(0)
+
+async function onCsvUpload (e) {
+  const file = e.target.files?.[0]
+  const reset = () => { e.target.value = '' }
+
+  uploadPct.value = 0
+
+  if (!file) return reset()
+
+  // Validaciones básicas
+  const name = file.name.toLowerCase()
+  if (!name.endsWith('.csv')) {
+    alert('El archivo debe ser .csv')
+    return reset()
+  }
+  const MAX = 100 * 1024 * 1024
+  if (file.size > MAX) {
+    alert('Archivo demasiado grande (máx. 25 MB).')
+    return reset()
+  }
+
+  const fd = new FormData()
+  // 👇 el backend espera el campo 'file' (multer.single('file'))
+  fd.append('file', file)
+
+  uploading.value = true
+  try {
+    // Usa tu wrapper http (baseURL ya debe incluir /api)
+    const { data } = await http.post('/aeroscope/upload-csv', fd, {
+      // No seteamos manualmente Content-Type
+      onUploadProgress: (p) => {
+        if (p.total) uploadPct.value = Math.round((p.loaded * 100) / p.total)
+      }
+    })
+
+    if (data?.ok) {
+      // feedback rápido
+      const inserted = data.inserted ?? 0
+      const omitidas = data.omitidas ?? 0
+      alert(`Importación completa.\nInsertadas: ${inserted}\nOmitidas: ${omitidas}`)
+      // refrescar filtros/kpis/tabla
+      await aplicarFiltros()
+    } else {
+      alert(data?.error || 'No se recibió confirmación del servidor.')
+    }
+  } catch (err) {
+    const apiMsg = err?.response?.data?.error || err?.message || 'Error subiendo CSV.'
+    alert(apiMsg)
+  } finally {
+    uploading.value = false
+    reset()
+    uploadPct.value = 0
+  }
+}
 
 // === Estado de filtros (armado igual que en la versión Agrupada) ===
 const dateStart = ref('')
@@ -234,17 +286,18 @@ function resetFiltros() {
 async function descargarCsv() {
   downCsv.value = true
   try {
-    const qs = new URLSearchParams()
-    if (dateStart.value) qs.set('start', dateStart.value)
-    if (dateEnd.value) qs.set('end', dateEnd.value)
-    if (droneId.value) qs.set('drone_id', droneId.value)
-    if (aeroscopeId.value) qs.set('aeroscope_id', aeroscopeId.value)
-    if (tipo.value) qs.set('tipo', tipo.value)
+    const params = {}
+    if (dateStart.value) params.start = dateStart.value
+    if (dateEnd.value) params.end = dateEnd.value
+    if (droneId.value) params.drone_id = droneId.value
+    if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
+    if (tipo.value) params.tipo = tipo.value
 
-    const resp = await fetch(`/api/aeroscope/export-csv?${qs.toString()}`)
-    if (!resp.ok) throw new Error('Error al exportar CSV')
-    const blob = await resp.blob()
-    const url = window.URL.createObjectURL(blob)
+    const { data } = await http.get('/aeroscope/export-csv', {
+      params,
+      responseType: 'blob'
+    })
+    const url = window.URL.createObjectURL(data)
     const a = document.createElement('a')
     a.href = url
     a.download = 'aeroscope_export.csv'
@@ -258,17 +311,18 @@ async function descargarCsv() {
 async function descargarKmz() {
   downKmz.value = true
   try {
-    const qs = new URLSearchParams()
-    if (dateStart.value) qs.set('start', dateStart.value)
-    if (dateEnd.value) qs.set('end', dateEnd.value)
-    if (droneId.value) qs.set('drone_id', droneId.value)
-    if (aeroscopeId.value) qs.set('aeroscope_id', aeroscopeId.value)
-    if (tipo.value) qs.set('tipo', tipo.value)
+    const params = {}
+    if (dateStart.value) params.start = dateStart.value
+    if (dateEnd.value) params.end = dateEnd.value
+    if (droneId.value) params.drone_id = droneId.value
+    if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
+    if (tipo.value) params.tipo = tipo.value
 
-    const resp = await fetch(`/api/aeroscope/export-kmz?${qs.toString()}`)
-    if (!resp.ok) throw new Error('Error al exportar KMZ')
-    const blob = await resp.blob()
-    const url = window.URL.createObjectURL(blob)
+    const { data } = await http.get('/aeroscope/export-kmz', {
+      params,
+      responseType: 'blob'
+    })
+    const url = window.URL.createObjectURL(data)
     const a = document.createElement('a')
     a.href = url
     a.download = 'aeroscope_export.kmz'

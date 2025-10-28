@@ -62,7 +62,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 /* ========= Carga CSV/XLSX =========
-   Encabezados aceptados (normalizados): ENTIDAD, EQUIPO, MATRICULA, SERIE, FECHA DE RECOLECCION
+   Encabezados aceptados (normalizados): ENTIDAD, EQUIPO, MATRICULA, SERIE, (fecha se ignora)
 */
 const upload = multer({ dest: 'src/uploads/' });
 
@@ -70,60 +70,84 @@ router.post('/upload-csv', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Archivo no enviado' });
 
   const filePath = req.file.path;
-  const inserted = [];
   const errors = [];
 
   const conn = await pool.getConnection();
   await conn.beginTransaction();
 
   try {
+    // 1) Cargar filas con tu helper (admite CSV/XLSX y normaliza headers)
     const rows = await loadRowsFromFile(filePath, req.file.originalname);
+
+    // 2) Armar registros base (ignoramos fecha)
+    //    - Requerimos SERIE para clave única; si falta, se omite.
+    //    - Si hay varias filas con la misma serie, la ÚLTIMA del archivo gana.
+    const bySerie = new Map(); // serie => { entidad, equipo, matricula, serie }
 
     for (const row of rows) {
       const entidad   = pick(row, ['entidad']);
-      const equipo    = pick(row, ['equipo']);
-      const matricula = pick(row, ['matricula','matrícula']);
-      const serie     = pick(row, ['serie']);
-      const fechaRaw  = pick(row, [
-        'fechaderecoleccion','fecharecoleccion','fehaderecoleccion','fharecoleccion'
-      ]);
+      const equipo    = pick(row, ['equipo', 'modelo', 'equipo_modelo']); // por si el CSV trae “modelo”
+      const matricula = pick(row, ['matricula','matrícula','registro']);
+      const serie     = pick(row, ['serie','n_serie','numero_serie','num_serie']);
 
-      // Requiere al menos ENTIDAD
-      if (!entidad) {
-        errors.push({ row, error: 'Campo ENTIDAD vacío (obligatorio)' });
+      if (!serie) {
+        errors.push({ row, error: 'SIN SERIE (omitido)' });
         continue;
       }
 
-      inserted.push([
-        entidad,
-        equipo || null,
-        matricula || null,
-        serie || null,
-        parseDateFlex(fechaRaw) ? new Date(parseDateFlex(fechaRaw)) : null,
-      ]);
+      // La última del archivo sobreescribe (más “actual”)
+      bySerie.set(String(serie).trim(), {
+        entidad: entidad || null,
+        equipo:  equipo  || null,
+        matricula: matricula || null,
+        serie: String(serie).trim()
+      });
     }
 
-    if (inserted.length) {
-      const series = inserted.map(r => r[3]).filter(Boolean); // Columna 3 es 'serie'
-      if (series.length) {
-        const [existing] = await conn.query(
-          `SELECT serie FROM ffpp WHERE serie IN (?)`, [series]
-        );
-        const existingSeries = new Set(existing.map(r => r.serie));
-        // Quita del array los repetidos
-        let omitidos = 0;
-        for (let i = inserted.length - 1; i >= 0; i--) {
-          if (existingSeries.has(inserted[i][3])) {
-            errors.push({ row: inserted[i], error: 'Serie ya existente (omitido)' });
-            inserted.splice(i, 1);
-            omitidos++;
-          }
-        }
+    const records = Array.from(bySerie.values());
+    let inserted = 0;
+    let updated  = 0;
+
+    if (records.length) {
+      // 3) Bulk UPSERT (serie es UNIQUE)
+      // - Si no existe, inserta.
+      // - Si ya existe, actualiza entidad/equipo/matricula y updated_at.
+      const values = records.map(r => [r.entidad, r.equipo, r.matricula, r.serie]);
+
+      const [result] = await conn.query(
+        `INSERT INTO ffpp (entidad, equipo, matricula, serie)
+         VALUES ?
+         ON DUPLICATE KEY UPDATE
+           entidad = VALUES(entidad),
+           equipo = VALUES(equipo),
+           matricula = VALUES(matricula),
+           updated_at = CURRENT_TIMESTAMP`,
+        [values]
+      );
+
+      // MySQL: affectedRows = inserts*1 + updates*2
+      const affected = Number(result?.affectedRows || 0);
+      // Estimar inserts/updates
+      // updates aproximados = affected - records.length (cuando hubo UPSERT)
+      // pero si todas eran nuevas, affected === records.length
+      if (affected <= records.length) {
+        inserted = affected;
+        updated  = 0;
+      } else {
+        updated  = affected - records.length;
+        inserted = records.length - (updated / 2);
       }
     }
 
     await conn.commit();
-    res.json({ ok: true, inserted: inserted.length, errors });
+
+    res.json({
+      ok: true,
+      inserted,
+      updated,
+      omitidas: errors.length,
+      errors
+    });
   } catch (e) {
     await conn.rollback();
     console.error('[FFPP upload]', e);
@@ -133,6 +157,7 @@ router.post('/upload-csv', upload.single('file'), async (req, res) => {
     conn.release();
   }
 });
+
 
 router.get('/kpi', async (req, res) => {
   const { start, end } = req.query

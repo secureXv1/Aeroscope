@@ -9,30 +9,25 @@
         <button class="btn" @click="fetchData(1)">Buscar</button>
         <button class="btn-primary ml-auto" @click="showForm()">Agregar nuevo</button>
         <!-- Carga de CSV -->
-        <div class="flex-1 md:max-w-xs">
-          <label class="text-sm text-slate-600">Subir CSV</label>
-          <div
-            class="mt-1 rounded-2xl border-2 border-dashed border-slate-300 bg-white/70 p-2 text-center cursor-pointer hover:bg-slate-50"
-            @click="fileEl?.click()"
-            @dragover.prevent
-            @drop.prevent="onDrop"
-          >
-            <input ref="fileEl" type="file" class="hidden" accept=".csv" @change="onFile" />
-            <p class="text-xs text-slate-500">
-              Arrastra aquí o <span class="underline">haz clic</span>
-            </p>
-            <p v-if="file" class="mt-1 text-xs text-slate-500">Seleccionado: {{ file?.name }}</p>
-            <button class="btn-primary mt-2" :disabled="!file || uploading" @click="uploadCsv">
-              {{ uploading ? 'Cargando…' : 'Procesar CSV' }}
-            </button>
-          </div>
-          <!-- Estado de carga -->
-          <div v-if="csvResult" class="mt-2 text-xs">
-            <span class="chip bg-green-100 text-green-700">Insertados: {{ csvResult.inserted ?? 0 }}</span>
-            <span class="chip bg-red-100 text-red-700">Omitidos: {{ csvResult.omitidas ?? 0 }}</span>
-            <span class="chip bg-yellow-100 text-yellow-700">Errores: {{ csvResult.errors?.length || 0 }}</span>
-            <span v-if="csvResult.ok" class="ml-2 text-green-600 font-semibold">✔ ¡Carga exitosa!</span>
-          </div>
+        <div class="ml-auto flex gap-2">
+          <label class="btn btn-primary">
+            <input
+              ref="csvInput"
+              type="file"
+              accept=".csv,.xlsx"
+              class="hidden"
+              @change="onPickCsv"
+            />
+            {{ uploading ? `Subiendo… ${uploadPct}%` : 'Subir CSV' }}
+          </label>
+        </div>
+        
+        <!-- Estado de carga/resultado (opcional) -->
+        <div v-if="csvResult" class="mt-2 text-xs">
+          <span class="chip bg-green-100 text-green-700">Insertados: {{ csvResult.inserted ?? 0 }}</span>
+          <span class="chip bg-red-100 text-red-700">Omitidos: {{ (csvResult.omitidas ?? csvResult.errors?.length) || 0 }}</span>
+          <span class="chip bg-yellow-100 text-yellow-700">Errores: {{ csvResult.errors?.length || 0 }}</span>
+          <span v-if="csvResult.ok" class="ml-2 text-green-600 font-semibold">✔ ¡Carga exitosa!</span>
         </div>
       </div>
     </div>
@@ -135,11 +130,11 @@ const page = ref(1)
 const pageSize = ref(12)
 const q = ref('')
 
-// CSV state
-const fileEl = ref(null)
-const file = ref(null)
-const uploading = ref(false)
-const csvResult = ref(null)
+// === CSV estilo Aeroscope ===
+const csvInput = ref(null)       // <input type="file" ref="csvInput" ... />
+const uploading = ref(false)     // estado de subida
+const uploadPct = ref(0)         // porcentaje de subida
+const csvResult = ref(null)      // { ok, inserted, omitidas, errors }
 
 // Modal/form state
 const showModal = ref(false)
@@ -157,7 +152,7 @@ const fetchData = async (p = 1) => {
   total.value = data.total ?? items.value.length
 }
 
-function showForm(edit = false) {
+function showForm (edit = false) {
   isEdit.value = !!edit
   if (edit && typeof edit === 'object') {
     form.value = { ...edit }
@@ -168,11 +163,13 @@ function showForm(edit = false) {
 }
 
 const edit = (row) => showForm(row)
+
 const del = async (id) => {
   if (!confirm('¿Eliminar registro?')) return
   await http.delete(`/aeronautica/${id}`)
   await fetchData(page.value)
 }
+
 const submitForm = async () => {
   if (isEdit.value && form.value.id) {
     await http.put(`/aeronautica/${form.value.id}`, form.value)
@@ -183,26 +180,56 @@ const submitForm = async () => {
   await fetchData(page.value)
 }
 
-// ---- CSV logic
-const onFile = (e) => (file.value = e.target.files?.[0] || null)
-const onDrop = (e) => (file.value = e.dataTransfer?.files?.[0] || null)
+// === Helpers CSV ===
+function openCsvPicker () {
+  csvInput.value?.click()
+}
 
-const uploadCsv = async () => {
-  if (!file.value) return
+async function onPickCsv (e) {
+  csvResult.value = null
+  uploadPct.value = 0
+
+  const file = e.target.files?.[0]
+  const reset = () => { e.target.value = '' }
+
+  if (!file) return reset()
+
+  // (Opcional) límite en cliente
+  const MAX = 100 * 1024 * 1024 // 100 MB
+  if (file.size > MAX) {
+    alert('Archivo muy grande (máx. 100 MB).')
+    return reset()
+  }
+
   const fd = new FormData()
-  fd.append('file', file.value)
+  fd.append('file', file)
+
   uploading.value = true
   try {
     const { data } = await http.post('/aeronautica/upload-csv', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      // ⚠️ No fijar manualmente Content-Type; axios lo arma con boundary correcto
+      onUploadProgress: (p) => {
+        if (p.total) uploadPct.value = Math.round((p.loaded * 100) / p.total)
+      }
     })
-    csvResult.value = data
-    await fetchData(1)
+
+    csvResult.value = {
+      ok: !!data?.ok,
+      inserted: data?.inserted ?? 0,
+      omitidas: data?.omitidas ?? (data?.errors?.length || 0),
+      errors: data?.errors || []
+    }
+
+    await fetchData(1) // refresca la tabla
+  } catch (err) {
+    const msg = err?.response?.data?.error || err?.message || 'Error subiendo CSV.'
+    alert(msg)
   } finally {
     uploading.value = false
-    file.value = null
-    if (fileEl.value) fileEl.value.value = null // LIMPIA el input real
+    uploadPct.value = 0
+    reset()
   }
 }
+
 onMounted(() => fetchData(1))
 </script>
