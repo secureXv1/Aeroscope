@@ -12,6 +12,7 @@ import { exec } from 'child_process';
 import fs from 'fs';
 
 import aeroscopeAgrupadoRoutes from './routes/aeroscope_agrupado.js';
+import dashboardExportRoutes from './routes/dashboard_export.js'
 
 
 const router = Router();
@@ -59,6 +60,7 @@ app.use('/api/ffpp', ffppRoutes);
 app.use('/api/aeronautica', aeronauticaRoutes);
 app.use('/api/export', router);
 app.use('/api/aeroscope_agrupado', aeroscopeAgrupadoRoutes);
+app.use('/api/dashboard', dashboardExportRoutes)
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {

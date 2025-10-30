@@ -70,8 +70,11 @@
         @click="resetFiltros"
         v-if="dateStart || dateEnd || timeStart || timeEnd || droneId || aeroscopeId">
         Limpiar
-      </button>  
-    </div>
+      </button>
+      <button class="btn btn-primary" @click="descargarInforme" :disabled="descargandoInforme">
+        {{ descargandoInforme ? 'Generando…' : 'Descargar informe' }}
+      </button>
+      </div>
   </div>
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -525,6 +528,47 @@ const barOpts = {
   maintainAspectRatio: false,
   plugins: { legend: { display: true } },
   scales: { x: { stacked: false }, y: { beginAtZero: true, ticks: { precision: 0 } } }
+}
+
+const descargandoInforme = ref(false)
+
+function buildRangeParams () {
+  const params = {}
+  const joinDT = (d, t, f) => d ? `${d} ${(t && /^\d{2}:\d{2}$/.test(t) ? t : f)}:00` : ''
+  if (dateStart.value) params.start_dt = joinDT(dateStart.value, timeStart.value, '00:00')
+  if (dateEnd.value)   params.end_dt   = joinDT(dateEnd.value,   timeEnd.value,   '23:59')
+  if (droneId.value)     params.drone_id = String(droneId.value).trim()
+  if (aeroscopeId.value) params.aeroscope_id = String(aeroscopeId.value).trim()
+  return params
+}
+
+async function descargarInforme() {
+  descargandoInforme.value = true
+  try {
+    const params = buildRangeParams()
+    const qs = new URLSearchParams(params).toString()
+    const base = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
+    const url = `${base}/dashboard/export-report?${qs}`
+
+    const resp = await fetch(url, { method: 'POST' }) // POST/GET indistinto
+    if (!resp.ok) {
+      const txt = await resp.text()
+      throw new Error(`HTTP ${resp.status}: ${txt.slice(0,200)}`)
+    }
+    const ct = resp.headers.get('content-type') || ''
+    const blob = await resp.blob()
+    const a = document.createElement('a')
+    const href = URL.createObjectURL(blob)
+    a.href = href
+    a.download = ct.includes('pdf') ? 'informe_aeroscope.pdf' : 'informe_aeroscope.html'
+    a.click()
+    URL.revokeObjectURL(href)
+  } catch (e) {
+    console.error(e)
+    alert('No se pudo generar el informe.')
+  } finally {
+    descargandoInforme.value = false
+  }
 }
 
 onMounted(() => {
