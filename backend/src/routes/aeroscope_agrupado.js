@@ -34,18 +34,39 @@ function buildDateWhere(query, col = 'time_start') {
 
 // KPIs agrupados (globales o filtrados por fecha)
 router.get('/kpi', async (req, res) => {
-  const { where, params } = buildDateWhere(req.query, 'time_start')
+  const base = buildDateWhere(req.query, 'time_start')
+  let where = base.where
+  const params = [...base.params]
+
+  const { drone_id, aeroscope_id , tipo } = req.query
+
+  if (drone_id) {
+    where += ' AND drone_id = ?'
+    params.push(drone_id)
+  }
+  if (aeroscope_id) {
+    where += ' AND aeroscope_id = ?'
+    params.push(aeroscope_id)
+  }
+   
+  if (tipo) {
+    where += ' AND tipo = ?'
+    params.push(String(tipo).toLowerCase())
+  }
+  
   const [rows] = await pool.query(`
     SELECT
-      COUNT(*) AS total,
-      SUM(tipo = 'ffpp') AS ffpp,
-      SUM(tipo = 'aeronautica') AS aeronautica,
-      SUM(tipo = 'hostil') AS hostil
+      COUNT(*)                         AS total,
+      SUM(tipo = 'ffpp')               AS ffpp,
+      SUM(tipo = 'aeronautica')        AS aeronautica,
+      SUM(tipo = 'hostil')             AS hostil
     FROM aeroscope_agrupado
     WHERE ${where}
   `, params)
+
   res.json(rows[0])
 })
+
 
 // Mismos filtros que aeroscope/map para alimentar gráficas comparativas
 router.get('/map', async (req, res) => {
