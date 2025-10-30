@@ -41,12 +41,12 @@ router.get('/kpi', async (req, res) => {
   const { drone_id, aeroscope_id , tipo } = req.query
 
   if (drone_id) {
-    where += ' AND drone_id = ?'
-    params.push(drone_id)
+    where += ' AND LOWER(TRIM(drone_id)) = LOWER(TRIM(?))'
+    params.push(String(drone_id))
   }
   if (aeroscope_id) {
-    where += ' AND aeroscope_id = ?'
-    params.push(aeroscope_id)
+    where += ' AND LOWER(TRIM(aeroscope_id)) = LOWER(TRIM(?))'
+    params.push(String(aeroscope_id))
   }
    
   if (tipo) {
@@ -298,5 +298,50 @@ router.get('/distincts', async (req, res) => {
   res.json(rows.map(r => r.drone_id))
 })
 
+// Distincts FULL (depende de rango y puede depender del otro ID)
+router.get('/distincts-full', async (req, res) => {
+  const base = buildDateWhere(req.query, 'time_start')
+  let where = base.where
+  const params = [...base.params]
+
+  const { drone_id, aeroscope_id } = req.query
+
+  // Si viene aeroscope_id, filtra para lista de drones
+  let whereForDrones = where
+  let paramsForDrones = [...params]
+  if (aeroscope_id) {
+    whereForDrones += ' AND LOWER(TRIM(aeroscope_id)) = LOWER(TRIM(?))'
+    paramsForDrones.push(String(aeroscope_id))
+  }
+
+  // Si viene drone_id, filtra para lista de aeroscopes
+  let whereForAeroscopes = where
+  let paramsForAeroscopes = [...params]
+  if (drone_id) {
+    whereForAeroscopes += ' AND LOWER(TRIM(drone_id)) = LOWER(TRIM(?))'
+    paramsForAeroscopes.push(String(drone_id))
+  }
+
+  const [droneRows] = await pool.query(`
+    SELECT DISTINCT TRIM(drone_id) AS id
+    FROM aeroscope
+    WHERE ${whereForDrones}
+      AND drone_id IS NOT NULL AND drone_id <> ''
+    ORDER BY id ASC
+  `, paramsForDrones)
+
+  const [aeroRows] = await pool.query(`
+    SELECT DISTINCT TRIM(aeroscope_id) AS id
+    FROM aeroscope
+    WHERE ${whereForAeroscopes}
+      AND aeroscope_id IS NOT NULL AND aeroscope_id <> ''
+    ORDER BY id ASC
+  `, paramsForAeroscopes)
+
+  res.json({
+    drone_ids: droneRows.map(r => r.id),
+    aeroscope_ids: aeroRows.map(r => r.id),
+  })
+})
 
 export default router;

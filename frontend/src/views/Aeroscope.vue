@@ -208,18 +208,24 @@ function getRangeSafe() {
 
 // === Cargar distincts de la vista base (para selects) ===
 async function cargarDistincts() {
-  const { data } = await http.get('/aeroscope/distincts')
+  const params = buildRangeParams()
+  const { data } = await http.get('/aeroscope/distincts-full', { params })
   droneIds.value = data?.drone_ids || []
   aeroscopeIds.value = data?.aeroscope_ids || []
 }
 
 async function recargarDroneIds() {
   const params = buildRangeParams()
-  const { data } = await http.get('/aeroscope/distincts', { params })
-  droneIds.value = Array.isArray(data) ? data : []
-  if (!droneIds.value.includes(droneId.value)) {
-    droneId.value = '' // resetea si el actual ya no existe
-  }
+  const { data } = await http.get('/aeroscope/distincts-full', { params })
+  droneIds.value = data?.drone_ids || []
+  if (!droneIds.value.includes(droneId.value)) droneId.value = ''
+}
+
+async function recargarAeroscopeIds() {
+  const params = buildRangeParams()
+  const { data } = await http.get('/aeroscope/distincts-full', { params })
+  aeroscopeIds.value = data?.aeroscope_ids || []
+  if (!aeroscopeIds.value.includes(aeroscopeId.value)) aeroscopeId.value = ''
 }
 
 
@@ -375,6 +381,18 @@ watch(dateEnd, (v) => {
 
 watch([dateStart, timeStart, dateEnd, timeEnd, aeroscopeId], () => {
   recargarDroneIds()
+})
+
+watch([dateStart, timeStart, dateEnd, timeEnd], async () => {
+  await cargarDistincts()          // refresca ambos con el rango
+})
+
+watch(aeroscopeId, async () => {
+  await recargarDroneIds()         // drones disponibles para ese aeroscope
+})
+
+watch(droneId, async () => {
+  await recargarAeroscopeIds()     // aeroscopes disponibles para ese drone (opcional)
 })
 
 
