@@ -213,6 +213,16 @@ async function cargarDistincts() {
   aeroscopeIds.value = data?.aeroscope_ids || []
 }
 
+async function recargarDroneIds() {
+  const params = buildRangeParams()
+  const { data } = await http.get('/aeroscope_agrupado/distincts', { params })
+  droneIds.value = Array.isArray(data) ? data : []
+  if (!droneIds.value.includes(droneId.value)) {
+    droneId.value = '' // resetea si el actual ya no existe
+  }
+}
+
+
 // 👇 helper: arma start_dt / end_dt respetando hora si existe
 function buildRangeParams() {
   const params = {}
@@ -227,8 +237,8 @@ function buildRangeParams() {
   // Si hay fecha fin: usa hora elegida o 23:59
   if (dateEnd.value)   params.end_dt   = joinDT(dateEnd.value,   timeEnd.value,   '23:59')
 
-  if (droneId.value)     params.drone_id = droneId.value
-  if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
+  if (droneId.value)     params.drone_id = String(droneId.value).trim()
+  if (aeroscopeId.value) params.aeroscope_id = String(aeroscopeId.value).trim()
   return params
 }
 
@@ -361,6 +371,10 @@ watch(dateStart, (v) => {
 })
 watch(dateEnd, (v) => {
   if (v && !timeEnd.value) timeEnd.value = '23:59'
+})
+
+watch([dateStart, timeStart, dateEnd, timeEnd, aeroscopeId], () => {
+  recargarDroneIds()
 })
 
 

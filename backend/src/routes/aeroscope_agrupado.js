@@ -75,8 +75,15 @@ router.get('/map', async (req, res) => {
   const params = [...base.params]
 
   const { drone_id, aeroscope_id } = req.query
-  if (drone_id)     { where += ' AND drone_id = ?'; params.push(drone_id) }
-  if (aeroscope_id) { where += ' AND aeroscope_id = ?'; params.push(aeroscope_id) }
+  if (drone_id) {
+  where += ' AND LOWER(TRIM(drone_id)) = LOWER(TRIM(?))'
+  params.push(String(drone_id))
+  }
+  if (aeroscope_id) {
+    where += ' AND LOWER(TRIM(aeroscope_id)) = LOWER(TRIM(?))'
+    params.push(String(aeroscope_id))
+  }
+
 
   const [rows] = await pool.query(`SELECT * FROM aeroscope_agrupado WHERE ${where}`, params)
   res.json(rows)
@@ -267,5 +274,29 @@ router.get('/export-kmz', async (req, res) => {
   res.setHeader('Content-Disposition', 'attachment; filename="aeroscope_agrupado.kmz"');
   res.send(kmzBuffer);
 });
+
+// === Distinct dinámico de Drone IDs según filtros ===
+router.get('/distincts', async (req, res) => {
+  const base = buildDateWhere(req.query, 'time_start')
+  let where = base.where
+  const params = [...base.params]
+
+  const { aeroscope_id } = req.query
+  if (aeroscope_id) {
+    where += ' AND LOWER(TRIM(aeroscope_id)) = LOWER(TRIM(?))'
+    params.push(aeroscope_id)
+  }
+
+  const [rows] = await pool.query(`
+    SELECT DISTINCT TRIM(drone_id) AS drone_id
+    FROM aeroscope_agrupado
+    WHERE ${where}
+    AND drone_id IS NOT NULL AND drone_id <> ''
+    ORDER BY drone_id ASC
+  `, params)
+
+  res.json(rows.map(r => r.drone_id))
+})
+
 
 export default router;
