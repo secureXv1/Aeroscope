@@ -13,6 +13,7 @@ import fs from 'fs';
 
 import aeroscopeAgrupadoRoutes from './routes/aeroscope_agrupado.js';
 import dashboardExportRoutes from './routes/dashboard_export.js'
+import dashboardExportCsvRoutes from './routes/dashboard_export_csv.js'
 
 
 const router = Router();
@@ -61,6 +62,7 @@ app.use('/api/aeronautica', aeronauticaRoutes);
 app.use('/api/export', router);
 app.use('/api/aeroscope_agrupado', aeroscopeAgrupadoRoutes);
 app.use('/api/dashboard', dashboardExportRoutes)
+app.use('/api/dashboard', dashboardExportCsvRoutes)
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {

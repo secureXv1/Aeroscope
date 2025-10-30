@@ -41,13 +41,14 @@
         <input type="date" v-model="dateStart" class="input mt-1" />
       </div>
       <div>
-        <label class="text-xs text-slate-600">Fecha fin</label>
-        <input type="date" v-model="dateEnd" class="input mt-1" />
-      </div>
-      <div>
         <label class="text-xs text-slate-600">Hora inicio</label>
         <input type="time" v-model="timeStart" class="input mt-1" step="60" />
       </div>
+      <div>
+        <label class="text-xs text-slate-600">Fecha fin</label>
+        <input type="date" v-model="dateEnd" class="input mt-1" />
+      </div>
+      
       <div>
         <label class="text-xs text-slate-600">Hora fin</label>
         <input type="time" v-model="timeEnd" class="input mt-1" step="60" />
@@ -71,9 +72,13 @@
         v-if="dateStart || dateEnd || timeStart || timeEnd || droneId || aeroscopeId">
         Limpiar
       </button>
+      <button class="btn btn-primary" @click="descargarInformeCsv" :disabled="descargandoInformeCsv">
+        {{ descargandoInformeCsv ? 'Generando…' : 'Descargar informe (CSV)' }}
+      </button>
       <button class="btn btn-primary" @click="descargarInforme" :disabled="descargandoInforme">
         {{ descargandoInforme ? 'Generando…' : 'Descargar informe' }}
       </button>
+
       </div>
   </div>
 
@@ -532,16 +537,6 @@ const barOpts = {
 
 const descargandoInforme = ref(false)
 
-function buildRangeParams () {
-  const params = {}
-  const joinDT = (d, t, f) => d ? `${d} ${(t && /^\d{2}:\d{2}$/.test(t) ? t : f)}:00` : ''
-  if (dateStart.value) params.start_dt = joinDT(dateStart.value, timeStart.value, '00:00')
-  if (dateEnd.value)   params.end_dt   = joinDT(dateEnd.value,   timeEnd.value,   '23:59')
-  if (droneId.value)     params.drone_id = String(droneId.value).trim()
-  if (aeroscopeId.value) params.aeroscope_id = String(aeroscopeId.value).trim()
-  return params
-}
-
 async function descargarInforme() {
   descargandoInforme.value = true
   try {
@@ -568,6 +563,34 @@ async function descargarInforme() {
     alert('No se pudo generar el informe.')
   } finally {
     descargandoInforme.value = false
+  }
+}
+
+const descargandoInformeCsv = ref(false)
+
+async function descargarInformeCsv () {
+  descargandoInformeCsv.value = true
+  try {
+    const params = buildRangeParams()
+    const qs = new URLSearchParams(params).toString()
+    const base = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
+    const resp = await fetch(`${base}/dashboard/export-csv?${qs}`)
+    if (!resp.ok) {
+      const txt = await resp.text()
+      throw new Error(`HTTP ${resp.status}: ${txt.slice(0,200)}`)
+    }
+    const blob = await resp.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'informe_dashboard.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    console.error(e)
+    alert('No se pudo generar el informe CSV.')
+  } finally {
+    descargandoInformeCsv.value = false
   }
 }
 
