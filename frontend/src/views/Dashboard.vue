@@ -45,6 +45,14 @@
         <input type="date" v-model="dateEnd" class="input mt-1" />
       </div>
       <div>
+        <label class="text-xs text-slate-600">Hora inicio</label>
+        <input type="time" v-model="timeStart" class="input mt-1" step="60" />
+      </div>
+      <div>
+        <label class="text-xs text-slate-600">Hora fin</label>
+        <input type="time" v-model="timeEnd" class="input mt-1" step="60" />
+      </div>
+      <div>
         <label class="text-xs text-slate-600">Drone ID</label>
         <select v-model="droneId" class="input mt-1 min-w-[140px]">
           <option value="">Todos</option>
@@ -58,14 +66,11 @@
           <option v-for="id in aeroscopeIdsFiltrados" :key="id" :value="id">{{ id }}</option>
         </select>
       </div>
-      <button class="btn mt-2" @click="resetFiltros" v-if="dateStart || dateEnd || droneId || aeroscopeId">Limpiar</button>
-      <!-- Botones de descarga 
-      <button class="btn" @click="descargarCsv" :disabled="descargando">
-        {{ descargando ? 'Descargando…' : 'Descargar CSV' }}
-      </button>
-      <button class="btn" @click="descargarKmz" :disabled="descargandoKmz">
-        {{ descargandoKmz ? 'Descargando…' : 'Descargar KMZ' }}
-      </button>-->
+      <button class="btn mt-2"
+        @click="resetFiltros"
+        v-if="dateStart || dateEnd || timeStart || timeEnd || droneId || aeroscopeId">
+        Limpiar
+      </button>  
     </div>
   </div>
 
@@ -205,6 +210,8 @@ import { http } from '../lib/http'
 const kpi = reactive({ aeroscope: 0, ffpp: 0, aeronautica: 0 })
 const dateStart = ref('')
 const dateEnd = ref('')
+const timeStart = ref('')
+const timeEnd   = ref('')
 const droneId = ref('')
 const aeroscopeId = ref('')
 const droneIds = ref([])
@@ -250,15 +257,20 @@ const kpiDronesUnicosAgrupado = computed(() => {
 })
 
 // === NUEVO: fetch del mapa AGRUPADO (misma firma de filtros) ===
-async function aplicarFiltrosAgrupado () {
-  if (!dateStart.value || !dateEnd.value) {
-    posicionesAgrupadas.value = []
-    return
-  }
-  const params = { start: dateStart.value, end: dateEnd.value }
-  if (droneId.value) params.drone_id = droneId.value
-  if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
+async function aplicarFiltros () {
+  // si falta rango, vacía
+  if (!dateStart.value || !dateEnd.value) { posicionesFiltradas.value = []; return }
+  const params = buildRangeParams()
+  const { data } = await http.get('/aeroscope/map', { params })
+  posicionesFiltradas.value = (data || []).filter(p =>
+    p.longitude !== null && p.latitude !== null &&
+    !isNaN(Number(p.longitude)) && !isNaN(Number(p.latitude))
+  )
+}
 
+async function aplicarFiltrosAgrupado () {
+  if (!dateStart.value || !dateEnd.value) { posicionesAgrupadas.value = []; return }
+  const params = buildRangeParams()
   const { data } = await http.get('/aeroscope_agrupado/map', { params })
   posicionesAgrupadas.value = (data || []).filter(p =>
     p.longitude !== null && p.latitude !== null &&
@@ -303,22 +315,6 @@ const kpiFiltrado = computed(() => {
   return { total, ffpp, aeronautica, hostil }
 })
 
-// Consulta datos filtrados (para KPIs, gráficos y descargas)
-async function aplicarFiltros() {
-  if (!dateStart.value || !dateEnd.value) {
-    posicionesFiltradas.value = []
-    return
-  }
-  const params = { start: dateStart.value, end: dateEnd.value }
-  if (droneId.value) params.drone_id = droneId.value
-  if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
-  const { data } = await http.get('/aeroscope/map', { params })
-  posicionesFiltradas.value = (data || []).filter(p =>
-    p.longitude !== null && p.latitude !== null &&
-    !isNaN(Number(p.longitude)) && !isNaN(Number(p.latitude))
-  )
-}
-
 const kpiDronesUnicos = computed(() => {
   // Set para drones únicos por tipo
   const setFFPP = new Set()
@@ -340,12 +336,29 @@ const kpiDronesUnicos = computed(() => {
   }
 })
 
-function resetFiltros() {
+function buildRangeParams () {
+  const params = {}
+  const joinDT = (d, t, fallback) => {
+    if (!d) return ''
+    const hhmm = (t && /^\d{2}:\d{2}$/.test(t)) ? t : fallback
+    return `${d} ${hhmm}:00`
+  }
+  if (dateStart.value) params.start_dt = joinDT(dateStart.value, timeStart.value, '00:00')
+  if (dateEnd.value)   params.end_dt   = joinDT(dateEnd.value,   timeEnd.value,   '23:59')
+  if (droneId.value)     params.drone_id = String(droneId.value).trim()
+  if (aeroscopeId.value) params.aeroscope_id = String(aeroscopeId.value).trim()
+  return params
+}
+
+function resetFiltros () {
   dateStart.value = ''
-  dateEnd.value = ''
+  dateEnd.value   = ''
+  timeStart.value = ''
+  timeEnd.value   = ''
   droneId.value = ''
   aeroscopeId.value = ''
   posicionesFiltradas.value = []
+  posicionesAgrupadas.value = []
 }
 
 async function descargarCsv() {
@@ -522,10 +535,17 @@ onMounted(() => {
   aplicarFiltrosAgrupado()
 })
 
-watch([dateStart, dateEnd, droneId, aeroscopeId], () => {
-  aplicarFiltros()
-  aplicarFiltrosAgrupado()
-})
+let t = null
+function requery () {
+  clearTimeout(t)
+  t = setTimeout(() => {
+    aplicarFiltros()
+    aplicarFiltrosAgrupado()
+  }, 200)
+}
+
+watch([dateStart, timeStart, dateEnd, timeEnd, droneId, aeroscopeId], requery)
+
 
 watch(droneIdsFiltrados, (ids) => {
   if (droneId.value && !ids.includes(droneId.value)) droneId.value = ''
@@ -533,5 +553,9 @@ watch(droneIdsFiltrados, (ids) => {
 watch(aeroscopeIdsFiltrados, (ids) => {
   if (aeroscopeId.value && !ids.includes(aeroscopeId.value)) aeroscopeId.value = ''
 })
+
+watch(dateStart, (v) => { if (v && !timeStart.value) timeStart.value = '00:00' })
+watch(dateEnd,   (v) => { if (v && !timeEnd.value)   timeEnd.value   = '23:59' })
+
 
 </script>
