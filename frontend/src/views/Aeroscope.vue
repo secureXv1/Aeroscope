@@ -259,20 +259,6 @@ async function loadKpiAgrupado() {
   kpi.hostil = Number(data?.hostil || 0)
 }
 
-// KPIs globales de la tabla aeroscope (sin filtros)
-router.get('/kpi-global', async (req, res) => {
-  const [rows] = await pool.query(`
-    SELECT
-      COUNT(*)                                                    AS total,
-      COALESCE(SUM(tipo = 'ffpp'), 0)                             AS ffpp,
-      COALESCE(SUM(tipo = 'aeronautica'), 0)                      AS aeronautica,
-      COALESCE(SUM(tipo = 'hostil'), 0)                           AS hostil
-    FROM aeroscope
-  `)
-  res.json(rows[0] || { total: 0, ffpp: 0, aeronautica: 0, hostil: 0 })
-})
-
-
 // === Consultar tabla (admite hora) ===
 async function aplicarFiltros() {
   const { ok, params } = getRangeSafe()
