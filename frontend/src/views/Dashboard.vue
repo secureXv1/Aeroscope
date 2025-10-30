@@ -207,7 +207,7 @@ Chart.register(...registerables)
 
 import { http } from '../lib/http'
 
-const kpi = reactive({ aeroscope: 0, ffpp: 0, aeronautica: 0 })
+const kpi = reactive({ aeroscope: 0, ffpp: 0, aeronautica: 0, hostil: 0 })
 const dateStart = ref('')
 const dateEnd = ref('')
 const timeStart = ref('')
@@ -293,10 +293,10 @@ const aeroscopeIdsFiltrados = computed(() => {
 // KPIs superiores: sólo al montar
 async function loadKpis() {
   const { data } = await http.get('/aeroscope/kpi-global')
-  kpi.aeroscope = data.total ?? 0
-  kpi.ffpp = data.ffpp ?? 0
-  kpi.aeronautica = data.aeronautica ?? 0
-  kpi.hostil = data.hostil ?? 0
+  kpi.aeroscope   = Number(data?.total ?? 0)
+  kpi.ffpp        = Number(data?.ffpp ?? 0)
+  kpi.aeronautica = Number(data?.aeronautica ?? 0)
+  kpi.hostil      = Number(data?.hostil ?? 0)
 }
 
 // Cargar IDs únicos para selects
