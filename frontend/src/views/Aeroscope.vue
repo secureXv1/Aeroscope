@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-6">
-    <!-- KPIs Superiores (sobre el dataset filtrado) -->
+    <!-- KPIs Superiores (agrupado) -->
     <div class="grid md:grid-cols-4 gap-5">
       <section class="kpi">
         <div class="kpi-label">Total Registros</div>
@@ -28,11 +28,18 @@
           <input type="date" v-model="dateStart" class="input mt-1" />
         </div>
         <div>
+          <label class="text-xs text-slate-600">Hora inicio</label>
+          <input type="time" v-model="timeStart" class="input mt-1" step="60" />
+        </div>
+
+        <div>
           <label class="text-xs text-slate-600">Fecha fin</label>
           <input type="date" v-model="dateEnd" class="input mt-1" />
         </div>
-
-        <!-- Drone ID: escribible + sugerencias -->
+        <div>
+          <label class="text-xs text-slate-600">Hora fin</label>
+          <input type="time" v-model="timeEnd" class="input mt-1" step="60" />
+        </div>
         <div>
           <label class="text-xs text-slate-600">Drone ID</label>
           <select v-model="droneId" class="input mt-1 min-w-[160px]">
@@ -40,43 +47,55 @@
             <option v-for="id in droneIds" :key="id" :value="id">{{ id }}</option>
           </select>
         </div>
-
         <div>
           <label class="text-xs text-slate-600">Aeroscope ID</label>
-          <select v-model="aeroscopeId" class="input mt-1 min-w-[180px]">
+          <select v-model="aeroscopeId" class="input mt-1 min-w-[160px]">
             <option value="">Todos</option>
             <option v-for="id in aeroscopeIds" :key="id" :value="id">{{ id }}</option>
           </select>
         </div>
 
-        <!-- Filtro por tipo -->
+        <!-- Filtro por tipo (como en Aeroscope: ffpp / aeronautica / hostil) -->
         <div class="flex gap-2">
-          <button class="btn btn-ghost" :class="tipo === '' ? 'ring-1 ring-slate-300' : ''" @click="tipo = ''">Todos</button>
-          <button class="btn btn-ghost text-green-600" :class="tipo === 'ffpp' ? 'ring-1 ring-green-300' : ''" @click="tipo = 'ffpp'">FFPP</button>
-          <button class="btn btn-ghost text-blue-600" :class="tipo === 'aeronautica' ? 'ring-1 ring-blue-300' : ''" @click="tipo = 'aeronautica'">Aeronáutica</button>
-          <button class="btn btn-ghost text-red-600" :class="tipo === 'hostil' ? 'ring-1 ring-red-300' : ''" @click="tipo = 'hostil'">Otros</button>
+          <button
+            class="btn btn-ghost"
+            :class="tipo === '' ? 'ring-1 ring-slate-300' : ''"
+            @click="tipo = ''"
+          >Todos</button>
+          <button
+            class="btn btn-ghost text-green-600"
+            :class="tipo === 'ffpp' ? 'ring-1 ring-green-300' : ''"
+            @click="tipo = 'ffpp'"
+          >FFPP</button>
+          <button
+            class="btn btn-ghost text-blue-600"
+            :class="tipo === 'aeronautica' ? 'ring-1 ring-blue-300' : ''"
+            @click="tipo = 'aeronautica'"
+          >Aeronáutica</button>
+          <button
+            class="btn btn-ghost text-red-600"
+            :class="tipo === 'hostil' ? 'ring-1 ring-red-300' : ''"
+            @click="tipo = 'hostil'"
+          >Otros</button>
         </div>
 
         <button class="btn" v-if="hayFiltros" @click="resetFiltros">Limpiar</button>
-      </div>
-      
-      <div class="ml-auto flex gap-2" style="margin-top: 15px;">
-          <label class="btn btn-primary">
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              class="hidden"
-              @change="onCsvUpload"
-            />
-            {{ uploading ? `Subiendo… ${uploadPct}%` : 'Subir CSV' }}
-          </label>
+        <button class="btn btn-primary" @click="descargarCsvAgrupado" :disabled="descargandoAgrupado">
+          {{ descargandoAgrupado ? 'Descargando…' : 'Descargar CSV Agrupado' }}
+        </button>
+        <button class="btn btn-primary" @click="downloadKmz">
+          Descargar KMZ
+        </button>
+        <div v-if="msg" class="w-full">
+          <span :class="msgClass">{{ msg }}</span>
         </div>
+      </div>
     </div>
 
-    <!-- Tabla -->
+    <!-- Tabla Agrupado -->
     <div class="card p-4">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="font-semibold">Resultados</h3>
+        <h3 class="font-semibold">Resultados (Agrupado)</h3>
 
         <!-- Paginación -->
         <div class="flex items-center gap-2 text-xs">
@@ -95,7 +114,8 @@
         <table class="w-full text-xs border-collapse">
           <thead>
             <tr class="bg-slate-100 text-slate-700">
-              <th class="text-left p-2 border">Fecha</th>
+              <th class="text-left p-2 border">Inicio</th>
+              <th class="text-left p-2 border">Fin</th>
               <th class="text-left p-2 border">Aeroscope</th>
               <th class="text-left p-2 border">Drone ID</th>
               <th class="text-left p-2 border">Tipo</th>
@@ -105,7 +125,8 @@
           </thead>
           <tbody>
             <tr v-for="(r, i) in pageRows" :key="i" class="odd:bg-white even:bg-slate-50">
-              <td class="p-2 border whitespace-nowrap">{{ r.created_at_fmt }}</td>
+              <td class="p-2 border whitespace-nowrap">{{ r.time_start_fmt }}</td>
+              <td class="p-2 border whitespace-nowrap">{{ r.time_end_fmt }}</td>
               <td class="p-2 border">{{ r.aeroscope_id || '-' }}</td>
               <td class="p-2 border">{{ r.drone_id || '-' }}</td>
               <td class="p-2 border capitalize">
@@ -124,7 +145,7 @@
             </tr>
 
             <tr v-if="!pageRows.length">
-              <td colspan="6" class="p-4 text-center text-slate-400">
+              <td colspan="7" class="p-4 text-center text-slate-400">
                 Sin datos para los filtros actuales.
               </td>
             </tr>
@@ -140,200 +161,183 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { http } from '../lib/http'
 
-// === Subida de CSV ===
-const uploading = ref(false)
-const uploadPct = ref(0)
-
-async function onCsvUpload (e) {
-  const file = e.target.files?.[0]
-  const reset = () => { e.target.value = '' }
-
-  uploadPct.value = 0
-
-  if (!file) return reset()
-
-  // Validaciones básicas
-  const name = file.name.toLowerCase()
-  if (!name.endsWith('.csv')) {
-    alert('El archivo debe ser .csv')
-    return reset()
-  }
-  const MAX = 100 * 1024 * 1024
-  if (file.size > MAX) {
-    alert('Archivo demasiado grande (máx. 25 MB).')
-    return reset()
-  }
-
-  const fd = new FormData()
-  // 👇 el backend espera el campo 'file' (multer.single('file'))
-  fd.append('file', file)
-
-  uploading.value = true
-  try {
-    // Usa tu wrapper http (baseURL ya debe incluir /api)
-    const { data } = await http.post('/aeroscope/upload-csv', fd, {
-      // No seteamos manualmente Content-Type
-      onUploadProgress: (p) => {
-        if (p.total) uploadPct.value = Math.round((p.loaded * 100) / p.total)
-      }
-    })
-
-    if (data?.ok) {
-      // feedback rápido
-      const inserted = data.inserted ?? 0
-      const omitidas = data.omitidas ?? 0
-      alert(`Importación completa.\nInsertadas: ${inserted}\nOmitidas: ${omitidas}`)
-      // refrescar filtros/kpis/tabla
-      await aplicarFiltros()
-    } else {
-      alert(data?.error || 'No se recibió confirmación del servidor.')
-    }
-  } catch (err) {
-    const apiMsg = err?.response?.data?.error || err?.message || 'Error subiendo CSV.'
-    alert(apiMsg)
-  } finally {
-    uploading.value = false
-    reset()
-    uploadPct.value = 0
-  }
-}
-
-// === Estado de filtros (armado igual que en la versión Agrupada) ===
+// === Estado de filtros ===
 const dateStart = ref('')
 const dateEnd = ref('')
-const droneId = ref('')       // input de texto con datalist
+const timeStart = ref('') 
+const timeEnd   = ref('')
+const droneId = ref('')
 const aeroscopeId = ref('')
-const tipo = ref('')          // '', 'ffpp', 'aeronautica', 'hostil'
+const tipo = ref('') // '', 'ffpp', 'aeronautica', 'hostil'
 
-// === Listas para selects (distincts) ===
+// === Listas para selects (tomadas de /aeroscope/distincts) ===
 const droneIds = ref([])
 const aeroscopeIds = ref([])
 
-// === KPIs calculados sobre el dataset filtrado ===
+// === KPIs (agrupado) ===
 const kpi = reactive({ total: 0, ffpp: 0, aeronautica: 0, hostil: 0 })
 
-// === Datos de tabla ===
+// === Datos de tabla (agrupado) ===
 const rows = ref([])
 
-// === Export flags ===
-const downCsv = ref(false)
-const downKmz = ref(false)
+const msg = ref('')
+const msgClass = computed(() => 'text-amber-600')
 
-// Distincts de Aeroscope
+const hayFiltros = computed(() =>
+  !!(dateStart.value || timeStart.value || dateEnd.value || timeEnd.value ||
+     droneId.value || aeroscopeId.value || tipo.value)
+)
+
+
+function getRangeSafe() {
+  const p = buildRangeParams()
+  if (!p.start_dt && !p.end_dt) return { ok: true, params: p } // sin rango, permitido
+
+  const toDate = (s) => s ? new Date(s.replace(' ', 'T')) : null
+  const d1 = toDate(p.start_dt)
+  const d2 = toDate(p.end_dt)
+
+  if (d1 && d2 && d1.getTime() > d2.getTime()) {
+    msg.value = 'El rango es inválido: inicio es mayor que fin.'
+    setTimeout(() => (msg.value = ''), 3500)
+    return { ok: false }
+  }
+  return { ok: true, params: p }
+}
+
+
+// === Cargar distincts de la vista base (para selects) ===
 async function cargarDistincts() {
   const { data } = await http.get('/aeroscope/distincts')
   droneIds.value = data?.drone_ids || []
   aeroscopeIds.value = data?.aeroscope_ids || []
 }
 
-// Consulta (map) con filtros
-async function aplicarFiltros() {
+async function recargarDroneIds() {
+  const params = buildRangeParams()
+  const { data } = await http.get('/aeroscope/distincts', { params })
+  droneIds.value = Array.isArray(data) ? data : []
+  if (!droneIds.value.includes(droneId.value)) {
+    droneId.value = '' // resetea si el actual ya no existe
+  }
+}
+
+
+// 👇 helper: arma start_dt / end_dt respetando hora si existe
+function buildRangeParams() {
   const params = {}
-  if (dateStart.value) params.start = dateStart.value
-  if (dateEnd.value) params.end = dateEnd.value
-  if (droneId.value) params.drone_id = droneId.value
-  if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
-  // Si tu API soporta filtrar por tipo, envíalo:
-  // if (tipo.value) params.tipo = tipo.value
-
-  const { data } = await http.get('/aeroscope/map', { params })
-  let arr = Array.isArray(data) ? data : []
-
-  // filtro por tipo en cliente (garantiza funcionamiento aunque el backend no acepte tipo)
-  if (tipo.value) {
-    const t = tipo.value
-    arr = arr.filter(r => String(r?.tipo || '').toLowerCase() === t)
+  const joinDT = (d, t, fallback) => {
+    if (!d) return ''
+    const hhmm = (t && /^\d{2}:\d{2}$/.test(t)) ? t : fallback
+    return `${d} ${hhmm}:00`
   }
 
-  rows.value = arr
+  // Si hay fecha de inicio: usa hora elegida o 00:00
+  if (dateStart.value) params.start_dt = joinDT(dateStart.value, timeStart.value, '00:00')
+  // Si hay fecha fin: usa hora elegida o 23:59
+  if (dateEnd.value)   params.end_dt   = joinDT(dateEnd.value,   timeEnd.value,   '23:59')
+
+  if (droneId.value)     params.drone_id = String(droneId.value).trim()
+  if (aeroscopeId.value) params.aeroscope_id = String(aeroscopeId.value).trim()
+  return params
+}
+
+// === Cargar KPIs agrupados (admite hora) ===
+async function loadKpiAgrupado() {
+  const { ok, params } = getRangeSafe()
+  if (!ok) return
+  const { data } = await http.get('/aeroscope/kpi', { params })
+  kpi.total = Number(data?.total || 0)
+  kpi.ffpp = Number(data?.ffpp || 0)
+  kpi.aeronautica = Number(data?.aeronautica || 0)
+  kpi.hostil = Number(data?.hostil || 0)
+}
+
+// === Consultar tabla (admite hora) ===
+async function aplicarFiltros() {
+  const { ok, params } = getRangeSafe()
+  if (!ok) return
+  const { data } = await http.get('/aeroscope/map', { params })
+  const arr = Array.isArray(data) ? data : []
+
+  const filtered = tipo.value
+    ? arr.filter(r => String(r?.tipo || '').toLowerCase() === tipo.value)
+    : arr
+
+  rows.value = filtered
     .filter(r =>
       r.longitude !== null && r.latitude !== null &&
       !Number.isNaN(Number(r.longitude)) && !Number.isNaN(Number(r.latitude))
     )
     .map(r => ({
       ...r,
-      created_at_fmt: fmtDT(r.created_at || r.time || r.time_start || r.timestamp)
+      time_start_fmt: fmtDT(r.time_start || r.start_time || r.start || r.fecha_inicio),
+      time_end_fmt:   fmtDT(r.time_end   || r.end_time   || r.end   || r.fecha_fin)
     }))
-    .sort((a, b) => (b.created_at_fmt > a.created_at_fmt ? 1 : -1))
-
-  // KPIs sobre el dataset filtrado
-  kpi.total = rows.value.length
-  kpi.ffpp = rows.value.filter(r => r.tipo === 'ffpp').length
-  kpi.aeronautica = rows.value.filter(r => r.tipo === 'aeronautica').length
-  kpi.hostil = rows.value.filter(r => r.tipo === 'hostil').length
+    .sort((a, b) => (b.time_start_fmt > a.time_start_fmt ? 1 : -1))
 }
 
+// === Utils ===
 function fmtDT(v) {
   const s = String(v || '')
   return s.replace('T', ' ').slice(0, 19) || '-'
 }
 
-const hayFiltros = computed(() =>
-  !!(dateStart.value || dateEnd.value || droneId.value || aeroscopeId.value || tipo.value)
-)
-
-function resetFiltros() {
-  dateStart.value = ''
-  dateEnd.value = ''
-  droneId.value = ''
-  aeroscopeId.value = ''
-  tipo.value = ''
-  rows.value = []
-  kpi.total = 0; kpi.ffpp = 0; kpi.aeronautica = 0; kpi.hostil = 0
+async function downloadKmz() {
+  const { ok, params } = getRangeSafe()
+  if (!ok) return
+  const qs = new URLSearchParams(params).toString()
+  const base = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
+  const resp = await fetch(`${base}/aeroscope/export-kmz?${qs}`)
+  const blob = await resp.blob()
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'aeroscope.kmz'
+  a.click()
+  window.URL.revokeObjectURL(url)
 }
 
-// Exportaciones con filtros actuales
-async function descargarCsv() {
-  downCsv.value = true
+async function descargarCsvAgrupado() {
+  const { ok, params } = getRangeSafe()
+  if (!ok) return
+  descargandoAgrupado.value = true
   try {
-    const params = {}
-    if (dateStart.value) params.start = dateStart.value
-    if (dateEnd.value) params.end = dateEnd.value
-    if (droneId.value) params.drone_id = droneId.value
-    if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
-    if (tipo.value) params.tipo = tipo.value
-
-    const { data } = await http.get('/aeroscope/export-csv', {
-      params,
-      responseType: 'blob'
-    })
-    const url = window.URL.createObjectURL(data)
+    const qs = new URLSearchParams(params).toString()
+    const base = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
+    const resp = await fetch(`${base}/aeroscope/export-csv?${qs}`)
+    if (!resp.ok) {
+      const txt = await resp.text()
+      throw new Error(`HTTP ${resp.status} - ${txt.slice(0,200)}`)
+    }
+    const blob = await resp.blob()
+    const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = 'aeroscope_export.csv'
     a.click()
     window.URL.revokeObjectURL(url)
   } finally {
-    downCsv.value = false
+    descargandoAgrupado.value = false
   }
 }
 
-async function descargarKmz() {
-  downKmz.value = true
-  try {
-    const params = {}
-    if (dateStart.value) params.start = dateStart.value
-    if (dateEnd.value) params.end = dateEnd.value
-    if (droneId.value) params.drone_id = droneId.value
-    if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
-    if (tipo.value) params.tipo = tipo.value
 
-    const { data } = await http.get('/aeroscope/export-kmz', {
-      params,
-      responseType: 'blob'
-    })
-    const url = window.URL.createObjectURL(data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'aeroscope_export.kmz'
-    a.click()
-    window.URL.revokeObjectURL(url)
-  } finally {
-    downKmz.value = false
-  }
+// === Limpiar (ahora borra también horas) ===
+function resetFiltros() {
+  dateStart.value = ''
+  timeStart.value = '' // 👈
+  dateEnd.value   = ''
+  timeEnd.value   = '' // 👈
+  droneId.value = ''
+  aeroscopeId.value = ''
+  tipo.value = ''
+  rows.value = []
+  loadKpiAgrupado()
 }
+const descargandoAgrupado = ref(false)
 
-// Paginación
+// === Paginación ===
 const page = ref(1)
 const pageSize = ref(20)
 const totalPages = computed(() => Math.max(1, Math.ceil(rows.value.length / pageSize.value)))
@@ -343,12 +347,35 @@ const pageRows = computed(() => {
 })
 watch([rows, pageSize], () => { page.value = 1 })
 
-// Lifecycle
+// === Lifecycle ===
 onMounted(async () => {
   await cargarDistincts()
+  await loadKpiAgrupado()
   await aplicarFiltros()
 })
-watch([dateStart, dateEnd, droneId, aeroscopeId, tipo], () => {
-  aplicarFiltros()
+
+let t = null
+function requery() {
+  clearTimeout(t)
+  t = setTimeout(() => {
+    page.value = 1
+    aplicarFiltros()
+    loadKpiAgrupado()
+  }, 200)
+}
+
+watch([dateStart, timeStart, dateEnd, timeEnd, droneId, aeroscopeId, tipo], requery)
+
+watch(dateStart, (v) => {
+  if (v && !timeStart.value) timeStart.value = '00:00'
 })
+watch(dateEnd, (v) => {
+  if (v && !timeEnd.value) timeEnd.value = '23:59'
+})
+
+watch([dateStart, timeStart, dateEnd, timeEnd, aeroscopeId], () => {
+  recargarDroneIds()
+})
+
+
 </script>
