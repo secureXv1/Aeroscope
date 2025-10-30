@@ -28,8 +28,17 @@
           <input type="date" v-model="dateStart" class="input mt-1" />
         </div>
         <div>
+          <label class="text-xs text-slate-600">Hora inicio</label>
+          <input type="time" v-model="timeStart" class="input mt-1" step="60" />
+        </div>
+
+        <div>
           <label class="text-xs text-slate-600">Fecha fin</label>
           <input type="date" v-model="dateEnd" class="input mt-1" />
+        </div>
+        <div>
+          <label class="text-xs text-slate-600">Hora fin</label>
+          <input type="time" v-model="timeEnd" class="input mt-1" step="60" />
         </div>
         <div>
           <label class="text-xs text-slate-600">Drone ID</label>
@@ -77,6 +86,9 @@
         <button class="btn btn-primary" @click="downloadKmz">
           Descargar KMZ
         </button>
+        <div v-if="msg" class="w-full">
+          <span :class="msgClass">{{ msg }}</span>
+        </div>
       </div>
     </div>
 
@@ -152,6 +164,8 @@ import { http } from '../lib/http'
 // === Estado de filtros ===
 const dateStart = ref('')
 const dateEnd = ref('')
+const timeStart = ref('') 
+const timeEnd   = ref('')
 const droneId = ref('')
 const aeroscopeId = ref('')
 const tipo = ref('') // '', 'ffpp', 'aeronautica', 'hostil'
@@ -166,6 +180,32 @@ const kpi = reactive({ total: 0, ffpp: 0, aeronautica: 0, hostil: 0 })
 // === Datos de tabla (agrupado) ===
 const rows = ref([])
 
+const msg = ref('')
+const msgClass = computed(() => 'text-amber-600')
+
+const hayFiltros = computed(() =>
+  !!(dateStart.value || timeStart.value || dateEnd.value || timeEnd.value ||
+     droneId.value || aeroscopeId.value || tipo.value)
+)
+
+
+function getRangeSafe() {
+  const p = buildRangeParams()
+  if (!p.start_dt && !p.end_dt) return { ok: true, params: p } // sin rango, permitido
+
+  const toDate = (s) => s ? new Date(s.replace(' ', 'T')) : null
+  const d1 = toDate(p.start_dt)
+  const d2 = toDate(p.end_dt)
+
+  if (d1 && d2 && d1.getTime() > d2.getTime()) {
+    msg.value = 'El rango es inválido: inicio es mayor que fin.'
+    setTimeout(() => (msg.value = ''), 3500)
+    return { ok: false }
+  }
+  return { ok: true, params: p }
+}
+
+
 // === Cargar distincts de la vista base (para selects) ===
 async function cargarDistincts() {
   const { data } = await http.get('/aeroscope/distincts')
@@ -173,11 +213,29 @@ async function cargarDistincts() {
   aeroscopeIds.value = data?.aeroscope_ids || []
 }
 
-// === Cargar KPIs agrupados (admite filtros por fecha) ===
-async function loadKpiAgrupado() {
+// 👇 helper: arma start_dt / end_dt respetando hora si existe
+function buildRangeParams() {
   const params = {}
-  if (dateStart.value) params.start = dateStart.value
-  if (dateEnd.value) params.end = dateEnd.value
+  const joinDT = (d, t, fallback) => {
+    if (!d) return ''
+    const hhmm = (t && /^\d{2}:\d{2}$/.test(t)) ? t : fallback
+    return `${d} ${hhmm}:00`
+  }
+
+  // Si hay fecha de inicio: usa hora elegida o 00:00
+  if (dateStart.value) params.start_dt = joinDT(dateStart.value, timeStart.value, '00:00')
+  // Si hay fecha fin: usa hora elegida o 23:59
+  if (dateEnd.value)   params.end_dt   = joinDT(dateEnd.value,   timeEnd.value,   '23:59')
+
+  if (droneId.value)     params.drone_id = droneId.value
+  if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
+  return params
+}
+
+// === Cargar KPIs agrupados (admite hora) ===
+async function loadKpiAgrupado() {
+  const { ok, params } = getRangeSafe()
+  if (!ok) return
   const { data } = await http.get('/aeroscope_agrupado/kpi', { params })
   kpi.total = Number(data?.total || 0)
   kpi.ffpp = Number(data?.ffpp || 0)
@@ -185,18 +243,13 @@ async function loadKpiAgrupado() {
   kpi.hostil = Number(data?.hostil || 0)
 }
 
-// === Consultar tabla agrupada (misma firma de filtros, con 'tipo' en cliente) ===
+// === Consultar tabla (admite hora) ===
 async function aplicarFiltros() {
-  const params = {}
-  if (dateStart.value) params.start = dateStart.value
-  if (dateEnd.value) params.end = dateEnd.value
-  if (droneId.value) params.drone_id = droneId.value
-  if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
-
+  const { ok, params } = getRangeSafe()
+  if (!ok) return
   const { data } = await http.get('/aeroscope_agrupado/map', { params })
   const arr = Array.isArray(data) ? data : []
 
-  // filtro de tipo en cliente si está definido
   const filtered = tipo.value
     ? arr.filter(r => String(r?.tipo || '').toLowerCase() === tipo.value)
     : arr
@@ -209,7 +262,7 @@ async function aplicarFiltros() {
     .map(r => ({
       ...r,
       time_start_fmt: fmtDT(r.time_start || r.start_time || r.start || r.fecha_inicio),
-      time_end_fmt: fmtDT(r.time_end || r.end_time || r.end || r.fecha_fin)
+      time_end_fmt:   fmtDT(r.time_end   || r.end_time   || r.end   || r.fecha_fin)
     }))
     .sort((a, b) => (b.time_start_fmt > a.time_start_fmt ? 1 : -1))
 }
@@ -221,12 +274,8 @@ function fmtDT(v) {
 }
 
 async function downloadKmz() {
-  const params = {}
-  if (dateStart.value) params.start = dateStart.value
-  if (dateEnd.value) params.end = dateEnd.value
-  if (droneId.value) params.drone_id = droneId.value
-  if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
-
+  const { ok, params } = getRangeSafe()
+  if (!ok) return
   const qs = new URLSearchParams(params).toString()
   const base = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
   const resp = await fetch(`${base}/aeroscope_agrupado/export-kmz?${qs}`)
@@ -239,30 +288,11 @@ async function downloadKmz() {
   window.URL.revokeObjectURL(url)
 }
 
-const hayFiltros = computed(() =>
-  !!(dateStart.value || dateEnd.value || droneId.value || aeroscopeId.value || tipo.value)
-)
-
-function resetFiltros() {
-  dateStart.value = ''
-  dateEnd.value = ''
-  droneId.value = ''
-  aeroscopeId.value = ''
-  tipo.value = ''
-  rows.value = []
-  loadKpiAgrupado()
-}
-const descargandoAgrupado = ref(false)
-
 async function descargarCsvAgrupado() {
+  const { ok, params } = getRangeSafe()
+  if (!ok) return
   descargandoAgrupado.value = true
   try {
-    const params = {}
-    if (dateStart.value) params.start = dateStart.value
-    if (dateEnd.value) params.end = dateEnd.value
-    if (droneId.value) params.drone_id = droneId.value
-    if (aeroscopeId.value) params.aeroscope_id = aeroscopeId.value
-
     const qs = new URLSearchParams(params).toString()
     const resp = await fetch(`/api/aeroscope_agrupado/export-csv?${qs}`)
     const blob = await resp.blob()
@@ -276,6 +306,20 @@ async function descargarCsvAgrupado() {
     descargandoAgrupado.value = false
   }
 }
+
+// === Limpiar (ahora borra también horas) ===
+function resetFiltros() {
+  dateStart.value = ''
+  timeStart.value = '' // 👈
+  dateEnd.value   = ''
+  timeEnd.value   = '' // 👈
+  droneId.value = ''
+  aeroscopeId.value = ''
+  tipo.value = ''
+  rows.value = []
+  loadKpiAgrupado()
+}
+const descargandoAgrupado = ref(false)
 
 // === Paginación ===
 const page = ref(1)
@@ -294,9 +338,24 @@ onMounted(async () => {
   await aplicarFiltros()
 })
 
-// Reaplicar al cambiar filtros
-watch([dateStart, dateEnd, droneId, aeroscopeId, tipo], () => {
-  aplicarFiltros()
-  loadKpiAgrupado()
+let t = null
+function requery() {
+  clearTimeout(t)
+  t = setTimeout(() => {
+    page.value = 1
+    aplicarFiltros()
+    loadKpiAgrupado()
+  }, 200)
+}
+
+watch([dateStart, timeStart, dateEnd, timeEnd, droneId, aeroscopeId, tipo], requery)
+
+watch(dateStart, (v) => {
+  if (v && !timeStart.value) timeStart.value = '00:00'
 })
+watch(dateEnd, (v) => {
+  if (v && !timeEnd.value) timeEnd.value = '23:59'
+})
+
+
 </script>
