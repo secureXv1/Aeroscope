@@ -61,7 +61,7 @@ router.get('/map', async (req, res) => {
   res.json(rows)
 })
 
-router.get('/export-kmz', async (req, res) => {
+router.get('/export-csv', async (req, res) => {
   const base = buildDateWhere(req.query, 'time_start')
   let where = base.where
   const params = [...base.params]
@@ -73,25 +73,22 @@ router.get('/export-kmz', async (req, res) => {
   const [rows] = await pool.query(
     `SELECT * FROM aeroscope_agrupado WHERE ${where} ORDER BY time_start DESC`,
     params
-  );
+  )
 
   function formatDate(dt) {
-  if (!dt) return ''
-  // Si ya es string 'YYYY-MM-DD HH:mm:ss', respétalo
-  if (typeof dt === 'string') {
-    // normaliza: reemplaza 'T' por ' ' y recorta a 19
-    return dt.replace('T', ' ').slice(0, 19)
+    if (!dt) return ''
+    if (typeof dt === 'string') {
+      return dt.replace('T', ' ').slice(0, 19)
+    }
+    const pad = n => String(n).padStart(2, '0')
+    const y = dt.getFullYear()
+    const m = pad(dt.getMonth() + 1)
+    const d = pad(dt.getDate())
+    const H = pad(dt.getHours())
+    const M = pad(dt.getMinutes())
+    const S = pad(dt.getSeconds())
+    return `${y}-${m}-${d} ${H}:${M}:${S}`
   }
-  // Si viene como Date (poco común desde MySQL2 con DATETIME), lo formateamos
-  const pad = n => String(n).padStart(2, '0')
-  const y = dt.getFullYear()
-  const m = pad(dt.getMonth() + 1)
-  const d = pad(dt.getDate())
-  const H = pad(dt.getHours())
-  const M = pad(dt.getMinutes())
-  const S = pad(dt.getSeconds())
-  return `${y}-${m}-${d} ${H}:${M}:${S}`
-}
 
   const data = rows.map(r => ({
     flight_id: r.flight_id,
@@ -105,14 +102,15 @@ router.get('/export-kmz', async (req, res) => {
     time_start: formatDate(r.time_start),
     time_end: formatDate(r.time_end),
     tipo: r.tipo,
-  }));
-  const csv = stringify(data, { header: true, bom: true });
-  res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename="aeroscope_agrupado_export.csv"');
-  res.send(csv);
-});
+  }))
 
-rrouter.get('/export-kmz', async (req, res) => {
+  const csv = stringify(data, { header: true, bom: true })
+  res.setHeader('Content-Type', 'text/csv')
+  res.setHeader('Content-Disposition', 'attachment; filename="aeroscope_agrupado_export.csv"')
+  res.send(csv)
+})
+
+router.get('/export-kmz', async (req, res) => {
   const base = buildDateWhere(req.query, 'time_start')
   let where = base.where
   const params = [...base.params]

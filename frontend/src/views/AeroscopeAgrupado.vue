@@ -294,7 +294,12 @@ async function descargarCsvAgrupado() {
   descargandoAgrupado.value = true
   try {
     const qs = new URLSearchParams(params).toString()
-    const resp = await fetch(`/api/aeroscope_agrupado/export-csv?${qs}`)
+    const base = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
+    const resp = await fetch(`${base}/aeroscope_agrupado/export-csv?${qs}`)
+    if (!resp.ok) {
+      const txt = await resp.text()
+      throw new Error(`HTTP ${resp.status} - ${txt.slice(0,200)}`)
+    }
     const blob = await resp.blob()
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -306,6 +311,7 @@ async function descargarCsvAgrupado() {
     descargandoAgrupado.value = false
   }
 }
+
 
 // === Limpiar (ahora borra también horas) ===
 function resetFiltros() {
