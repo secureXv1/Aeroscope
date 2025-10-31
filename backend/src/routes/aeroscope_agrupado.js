@@ -89,6 +89,21 @@ router.get('/map', async (req, res) => {
   res.json(rows)
 })
 
+// Mapea aeroscope_id -> nombre legible
+const AEROSCOPE_NAME_BY_ID = new Map([
+  ['0QRDGARR03J36D', 'EL PLATEADO'],
+  ['0QRDGARR03C922', 'S. DE QULICHAO'],
+  ['0QRDGARR0375CQ', 'PEREIRA'],
+  ['0QRDGARR038VTP', 'DIAN'],
+  ['0QRDGARR037Y8K', 'DIPOL'],
+  ['0QRDGARR035KH5', 'MEDELLIN'],
+  ['0QRDGARR039YT5', 'ARAUCA'],
+  ['0QRDGARR033W40', 'DEURA'],
+  ['0QRDGARR035C68', 'CARTAGENA'],
+  ['0QRDGARR0383E9', 'CUCUTA'],
+  ['0QRDGAFR03CFJ7', 'CALI'],
+])
+// Exportar CSV
 router.get('/export-csv', async (req, res) => {
   const base = buildDateWhere(req.query, 'time_start')
   let where = base.where
@@ -105,9 +120,7 @@ router.get('/export-csv', async (req, res) => {
 
   function formatDate(dt) {
     if (!dt) return ''
-    if (typeof dt === 'string') {
-      return dt.replace('T', ' ').slice(0, 19)
-    }
+    if (typeof dt === 'string') return dt.replace('T', ' ').slice(0, 19)
     const pad = n => String(n).padStart(2, '0')
     const y = dt.getFullYear()
     const m = pad(dt.getMonth() + 1)
@@ -118,19 +131,23 @@ router.get('/export-csv', async (req, res) => {
     return `${y}-${m}-${d} ${H}:${M}:${S}`
   }
 
-  const data = rows.map(r => ({
-    flight_id: r.flight_id,
-    drone_id: r.drone_id,
-    drone_type: r.drone_type,
-    aeroscope_id: r.aeroscope_id,
-    duration_sec: r.duration_sec,
-    max_alt_m: r.max_alt_m,
-    longitude: r.longitude,
-    latitude: r.latitude,
-    time_start: formatDate(r.time_start),
-    time_end: formatDate(r.time_end),
-    tipo: r.tipo,
-  }))
+  const data = rows.map(r => {
+    const aeroscopeName = AEROSCOPE_NAME_BY_ID.get(String(r.aeroscope_id)) || ''
+    return {
+      flight_id: r.flight_id,
+      drone_id: r.drone_id,
+      drone_type: r.drone_type,
+      aeroscope_name: aeroscopeName,
+      aeroscope_id: r.aeroscope_id,      
+      duration_sec: r.duration_sec,
+      max_alt_m: r.max_alt_m,
+      longitude: r.longitude,
+      latitude: r.latitude,
+      time_start: formatDate(r.time_start),
+      time_end: formatDate(r.time_end),
+      tipo: r.tipo,
+    }
+  })
 
   const csv = stringify(data, { header: true, bom: true })
   res.setHeader('Content-Type', 'text/csv')
@@ -138,6 +155,7 @@ router.get('/export-csv', async (req, res) => {
   res.send(csv)
 })
 
+// Exportar KMZ
 router.get('/export-kmz', async (req, res) => {
   const base = buildDateWhere(req.query, 'time_start')
   let where = base.where
